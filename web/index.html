@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>股票機器人工廠</title>
+<style>
+  :root{
+    --bg:#0e1116; --surface:#171b22; --surface2:#1f2530; --line:#2a3140;
+    --text:#e8edf4; --muted:#8b97a8; --accent:#3ddc97; --accent2:#ffb454;
+    --buy:#3ddc97; --sell:#ff6b6b; --radius:12px;
+    --mono:'SFMono-Regular',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.6;padding:0 0 60px}
+  .topbar{background:var(--surface);border-bottom:1px solid var(--line);padding:16px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:10}
+  .logo{font-weight:700;font-size:19px;letter-spacing:.5px}
+  .logo b{color:var(--accent)}
+  .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:3px 10px;border-radius:20px}
+  .tag.live{color:var(--accent);border-color:var(--accent)}
+  .tag.offline{color:var(--accent2);border-color:var(--accent2)}
+  .wrap{max-width:1100px;margin:28px auto;padding:0 24px}
+  .lead{color:var(--muted);font-size:15px;margin-bottom:24px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .card h2{font-size:16px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .card .sub{font-size:13px;color:var(--muted);margin-bottom:16px}
+  .pill{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);color:var(--muted)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld label{font-size:12px;color:var(--muted)}
+  .inp{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px}
+  .inp.stock{width:120px;font-family:var(--mono);letter-spacing:1px}
+  /* 積木區 */
+  .palette{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  .block{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;user-select:none;transition:.15s;display:flex;align-items:center;gap:6px}
+  .block:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .block.sellblk:hover{border-color:var(--sell)}
+  .dropzone{min-height:70px;border:1.5px dashed var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:7px;margin-bottom:6px}
+  .zonelabel{font-size:12px;font-weight:600;margin:14px 0 6px;display:flex;align-items:center;gap:7px}
+  .zonelabel .dot{width:9px;height:9px;border-radius:50%}
+  .added{display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:7px;padding:7px 11px;font-size:13px;font-family:var(--mono);animation:pop .2s}
+  @keyframes pop{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+  .added .x{cursor:pointer;color:var(--muted);font-weight:700;padding:0 4px}
+  .added .x:hover{color:var(--sell)}
+  .logic{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .logic select{background:var(--surface2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:12px}
+  .btns{display:flex;gap:10px;margin-top:14px}
+  .runbtn{flex:1;background:var(--accent);color:#06231a;border:none;border-radius:9px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;transition:.15s}
+  .runbtn:hover{filter:brightness(1.08)}
+  .runbtn:disabled{opacity:.6;cursor:wait}
+  .savebtn{background:var(--surface2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:13px 18px;font-size:14px;font-weight:600;cursor:pointer}
+  .savebtn:hover{border-color:var(--accent2)}
+  .nameinput{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;margin-bottom:16px}
+  /* 結果 */
+  .result{display:none;margin-top:20px}
+  .result.show{display:block;animation:pop .3s}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .stat{background:var(--surface2);border-radius:9px;padding:13px;text-align:center}
+  .stat .v{font-size:20px;font-weight:700;font-family:var(--mono)}
+  .stat .l{font-size:11px;color:var(--muted);margin-top:2px}
+  .signal{text-align:center;padding:12px;border-radius:9px;font-weight:700;font-size:17px;margin-bottom:14px}
+  .verdict{font-size:13px;padding:10px 13px;border-radius:8px;margin-bottom:14px;line-height:1.5}
+  .verdict.win{background:rgba(61,220,151,.12);color:var(--buy);border:1px solid rgba(61,220,151,.3)}
+  .verdict.lose{background:rgba(255,180,84,.1);color:var(--accent2);border:1px solid rgba(255,180,84,.3)}
+  .log{font-family:var(--mono);font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:12px;max-height:150px;overflow:auto}
+  .log div{padding:2px 0}
+  .err{background:rgba(255,107,107,.12);color:var(--sell);border:1px solid rgba(255,107,107,.3);padding:11px 13px;border-radius:8px;font-size:13px;margin-top:14px}
+  /* 範例 / 我的 / 社群 */
+  .sample{border:1px solid var(--line);border-radius:9px;padding:13px;margin-bottom:10px;cursor:pointer;transition:.15s}
+  .sample:hover{border-color:var(--accent2);background:var(--surface2)}
+  .sample .t{font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .sample .d{font-size:12px;color:var(--muted);margin-top:3px}
+  .sample .meta{font-size:11px;color:var(--muted);margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}
+  .chip{background:var(--surface2);border-radius:8px;padding:1px 7px}
+  .risk-低{color:var(--buy)} .risk-中低{color:var(--buy)} .risk-中{color:var(--accent2)} .risk-高{color:var(--sell)}
+  .mybot{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:8px;font-size:13px}
+  .mybot .ld{cursor:pointer;color:var(--accent)} .mybot .del{cursor:pointer;color:var(--muted)} .mybot .del:hover{color:var(--sell)}
+  .empty{font-size:13px;color:var(--muted);padding:6px 2px}
+  .feed{font-size:13px}
+  .feeditem{padding:10px 0;border-bottom:1px solid var(--line)}
+  .feeditem:last-child{border:none}
+  .feeditem .who{color:var(--accent);font-weight:600}
+  .feeditem .when{color:var(--muted);font-size:11px;float:right}
+  .note{font-size:12px;color:var(--muted);background:var(--surface2);border-left:3px solid var(--accent2);padding:10px 13px;border-radius:0 8px 8px 0;margin-top:18px}
+  .disc{font-size:12px;color:var(--muted);text-align:center;margin-top:30px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">股票<b>機器人工廠</b></div>
+  <span class="tag" id="modeTag">連線中…</span>
+  <span class="tag">真實證交所資料</span>
+</div>
+
+<div class="wrap">
+  <p class="lead">每個人的選股邏輯不同，所以不該用別人的機器人——你用積木組出<b style="color:var(--text)">屬於自己</b>的買賣規則，輸入股票代號用<b style="color:var(--text)">真實歷史資料</b>回測，再自己決定要不要照訊號下單。回測已扣台股交易成本，並和「同期買進持有」對比。</p>
+
+  <div class="grid">
+    <!-- 機器人工廠 -->
+    <div class="card" style="grid-column:1/-1">
+      <h2><span>🏭</span> 機器人工廠 <span class="pill">核心功能</span></h2>
+      <p class="sub">① 取個名字 ② 點積木組買賣規則 ③ 輸入股票代號回測。不用寫程式。</p>
+
+      <input class="nameinput" id="botname" value="我的第一個機器人" />
+
+      <div class="row">
+        <div class="fld">
+          <label>股票代號</label>
+          <input class="inp stock" id="stock" value="2330" maxlength="6" />
+        </div>
+        <div class="fld">
+          <label>回測期間</label>
+          <select class="inp" id="months">
+            <option value="6">近 6 個月</option>
+            <option value="12" selected>近 12 個月</option>
+            <option value="24">近 24 個月</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:var(--muted);margin-bottom:7px">買進積木（點一下加入下方買進區）：</div>
+      <div class="palette" id="buyPalette"></div>
+
+      <div class="zonelabel"><span class="dot" style="background:var(--buy)"></span>買進條件
+        <span class="logic">符合 <select id="buyLogic"><option value="AND">全部</option><option value="OR">任一</option></select> 條件時買進</span>
+      </div>
+      <div class="dropzone" id="buyZone"></div>
+
+      <div style="font-size:12px;color:var(--muted);margin:16px 0 7px">賣出積木（點一下加入下方賣出區）：</div>
+      <div class="palette" id="sellPalette"></div>
+
+      <div class="zonelabel"><span class="dot" style="background:var(--sell)"></span>賣出條件
+        <span class="logic">符合 <select id="sellLogic"><option value="OR">任一</option><option value="AND">全部</option></select> 條件時賣出</span>
+      </div>
+      <div class="dropzone" id="sellZone"></div>
+
+      <div class="btns">
+        <button class="runbtn" id="runbtn" onclick="runBacktest()">▶ 用真實資料回測這個機器人</button>
+        <button class="savebtn" onclick="saveBot()">💾 儲存</button>
+      </div>
+
+      <div class="result" id="result">
+        <div class="signal" id="signal"></div>
+        <div class="verdict" id="verdict"></div>
+        <div class="stats">
+          <div class="stat"><div class="v" id="st_trades">—</div><div class="l">交易次數</div></div>
+          <div class="stat"><div class="v" id="st_win">—</div><div class="l">勝率</div></div>
+          <div class="stat"><div class="v" id="st_ret">—</div><div class="l">複利報酬(含成本)</div></div>
+          <div class="stat"><div class="v" id="st_mdd">—</div><div class="l">最大回撤</div></div>
+          <div class="stat"><div class="v" id="st_bh">—</div><div class="l">買進持有(基準)</div></div>
+          <div class="stat"><div class="v" id="st_days">—</div><div class="l">回測天數</div></div>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+      <div id="errbox"></div>
+    </div>
+
+    <!-- 範例產生器 -->
+    <div class="card">
+      <h2><span>✨</span> 範例機器人 <span class="pill" id="sampleCount"></span></h2>
+      <p class="sub">平台內建的範本，點一下就載入工廠，改成你自己的。</p>
+      <div id="samples"><div class="empty">載入中…</div></div>
+    </div>
+
+    <!-- 我的機器人 -->
+    <div class="card">
+      <h2><span>📁</span> 我的機器人</h2>
+      <p class="sub">你儲存的機器人（存在這台裝置的瀏覽器裡）。</p>
+      <div id="mybots"></div>
+    </div>
+
+    <!-- 社群參數池 -->
+    <div class="card" style="grid-column:1/-1">
+      <h2><span>💬</span> 社群參數池</h2>
+      <p class="sub">朋友們分享他們觀察到的漲跌參數，互相交流。</p>
+      <div class="feed" id="feed"></div>
+    </div>
+  </div>
+
+  <div class="note">⚠ 回測使用台灣證交所公開歷史資料，已扣約 0.585% 來回交易成本。平台只產生參考訊號，<b style="color:var(--text)">不會自動下單、不碰任何人的資金</b>——每個人都要自己在券商手動確認。KD/RSI 為簡化算法，與看盤軟體可能略有差異。</div>
+
+  <div class="disc">本平台提供分析工具，非投資建議。任何機器人的歷史回測都不代表未來，股市投資可能虧損，請自負風險。</div>
+</div>
+
+<script src="config.js"></script>
+<script src="engine.js"></script>
+<script>
+// ── 積木定義（前端可組的條件）──
+const BUY_BLOCKS = [
+  {label:"KD 的 K < 20（超賣）", cond:{metric:"kd_k",op:"<",value:20}},
+  {label:"RSI < 30（超賣）", cond:{metric:"rsi",op:"<",value:30}},
+  {label:"股價站上 20 日均線", cond:{metric:"close",op:"cross_above",value_metric:"sma_20"}},
+  {label:"股價站上 5 日均線", cond:{metric:"close",op:"cross_above",value_metric:"sma_5"}},
+  {label:"股價站上 60 日均線（季線）", cond:{metric:"close",op:"cross_above",value_metric:"sma_60"}},
+  {label:"5 日線黃金交叉 20 日線", cond:{metric:"sma_5",op:"cross_above",value_metric:"sma_20"}},
+];
+const SELL_BLOCKS = [
+  {label:"KD 的 K > 80（超買）", cond:{metric:"kd_k",op:">",value:80}},
+  {label:"RSI > 70（過熱）", cond:{metric:"rsi",op:">",value:70}},
+  {label:"股價跌破 20 日均線", cond:{metric:"close",op:"cross_below",value_metric:"sma_20"}},
+  {label:"5 日線死亡交叉 20 日線", cond:{metric:"sma_5",op:"cross_below",value_metric:"sma_20"}},
+];
+const FEED = [
+  {who:"阿明", txt:"台積電 KD 在 18 了，歷史上這附近常反彈，加進我的抄底 bot 試試", when:"3 分鐘前"},
+  {who:"小美", txt:"我把 RSI 門檻從 30 改成 35，回測勝率高了一點，分享給大家", when:"22 分鐘前"},
+  {who:"老王", txt:"短線的話我會把停利設緊一點，K 過 70 就跑不等 80", when:"1 小時前"},
+  {who:"Jenny", txt:"提醒大家：很多抄底 bot 看起來賺，但其實輸給抱著不動，記得看『基準』那欄", when:"昨天"},
+];
+const MYBOTS_KEY = "myStockBots";
+
+let buyConds=[], sellConds=[];
+let SAMPLES=[];           // 從後端 /api/bots 載入
+
+// 後備範本（後端連不到時用）
+const FALLBACK_SAMPLES = [
+  {id:"kd_dip",name:"KD 抄底機器人",desc:"K<20 進、K>80 出。",category:"抄底",risk:"中",horizon:"短中線",
+   buy_labels:["KD 的 K < 20"],sell_labels:["KD 的 K > 80"],
+   buy:{logic:"AND",conditions:[{metric:"kd_k",op:"<",value:20}]},
+   sell:{logic:"OR",conditions:[{metric:"kd_k",op:">",value:80}]}},
+];
+
+// ── 連線狀態 ──
+async function detectBackend(){
+  try{
+    const r = await fetch(API_BASE + "/api/health", {signal:AbortSignal.timeout(4000)});
+    if(r.ok){ modeTag.textContent="● 後端已連線"; modeTag.className="tag live"; return true; }
+  }catch(e){}
+  modeTag.textContent="● 離線模式（用模擬股價）"; modeTag.className="tag offline"; return false;
+}
+
+// ── 範例機器人：先從後端拿，拿不到就用內建後備 ──
+async function loadSamples(){
+  try{
+    const r = await fetch(API_BASE + "/api/bots", {signal:AbortSignal.timeout(5000)});
+    const d = await r.json();
+    SAMPLES = d.bots;
+  }catch(e){
+    SAMPLES = FALLBACK_SAMPLES;
+  }
+  renderSamples();
+}
+
+// ── 渲染 ──
+function renderPalette(){
+  buyPalette.innerHTML=""; sellPalette.innerHTML="";
+  BUY_BLOCKS.forEach(b=>{const e=document.createElement("div");e.className="block";e.innerHTML="➕ "+b.label;e.onclick=()=>{buyConds.push(b);renderZones()};buyPalette.appendChild(e)});
+  SELL_BLOCKS.forEach(b=>{const e=document.createElement("div");e.className="block sellblk";e.innerHTML="➖ "+b.label;e.onclick=()=>{sellConds.push(b);renderZones()};sellPalette.appendChild(e)});
+}
+function renderZones(){
+  buyZone.innerHTML=""; sellZone.innerHTML="";
+  if(!buyConds.length) buyZone.innerHTML='<span style="color:var(--muted);font-size:12px">（從上方點積木加入買進條件）</span>';
+  if(!sellConds.length) sellZone.innerHTML='<span style="color:var(--muted);font-size:12px">（從上方點積木加入賣出條件）</span>';
+  buyConds.forEach((c,i)=>{const e=document.createElement("div");e.className="added";e.innerHTML=`<span>${c.label}</span><span class="x">✕</span>`;e.querySelector(".x").onclick=()=>{buyConds.splice(i,1);renderZones()};buyZone.appendChild(e)});
+  sellConds.forEach((c,i)=>{const e=document.createElement("div");e.className="added";e.innerHTML=`<span>${c.label}</span><span class="x">✕</span>`;e.querySelector(".x").onclick=()=>{sellConds.splice(i,1);renderZones()};sellZone.appendChild(e)});
+}
+function labelFor(c){ // 後備：沒有 label 時自動產生
+  const m={kd_k:"KD的K",kd_d:"KD的D",rsi:"RSI",close:"股價",sma_5:"5日線",sma_20:"20日線",sma_60:"60日線"};
+  const r=c.value_metric?m[c.value_metric]:c.value;
+  const op={"<":"<",">":">","cross_above":"向上穿越","cross_below":"向下跌破"}[c.op]||c.op;
+  return `${m[c.metric]||c.metric} ${op} ${r}`;
+}
+function condsFromBot(bot){
+  // 把後端 bot 的 conditions + labels 轉成工廠的積木
+  const mk=(rule,labels)=> (rule.conditions||[]).map((cond,i)=>({label:(labels&&labels[i])||labelFor(cond),cond}));
+  return {buy:mk(bot.buy,bot.buy_labels), sell:mk(bot.sell,bot.sell_labels)};
+}
+function renderSamples(){
+  sampleCount.textContent = SAMPLES.length + " 個";
+  samples.innerHTML="";
+  SAMPLES.forEach(s=>{const e=document.createElement("div");e.className="sample";
+    e.innerHTML=`<div class="t">${s.name}<span class="pill">載入工廠 →</span></div>
+      <div class="d">${s.desc}</div>
+      <div class="meta"><span class="chip">${s.category||""}</span>
+        <span class="chip risk-${s.risk||"中"}">風險：${s.risk||"中"}</span>
+        <span class="chip">${s.horizon||""}</span></div>`;
+    e.onclick=()=>{
+      const c=condsFromBot(s);
+      botname.value=s.name+"（我的版本）";
+      buyConds=c.buy; sellConds=c.sell;
+      buyLogic.value=(s.buy&&s.buy.logic)||"AND"; sellLogic.value=(s.sell&&s.sell.logic)||"OR";
+      renderZones(); window.scrollTo({top:0,behavior:"smooth"});
+    };
+    samples.appendChild(e)});
+}
+function renderFeed(){
+  feed.innerHTML="";
+  FEED.forEach(f=>{const e=document.createElement("div");e.className="feeditem";
+    e.innerHTML=`<span class="when">${f.when}</span><span class="who">${f.who}</span>：${f.txt}`;feed.appendChild(e)});
+}
+
+// ── 我的機器人（localStorage）──
+function getMyBots(){ try{return JSON.parse(localStorage.getItem(MYBOTS_KEY)||"[]")}catch(e){return []} }
+function setMyBots(a){ localStorage.setItem(MYBOTS_KEY, JSON.stringify(a)); }
+function saveBot(){
+  if(!buyConds.length||!sellConds.length){alert("先組好買進與賣出條件再儲存");return}
+  const bots=getMyBots();
+  bots.unshift({
+    name:botname.value||"未命名機器人", stock:stock.value.trim(),
+    buyConds, sellConds, buyLogic:buyLogic.value, sellLogic:sellLogic.value,
+    savedAt:new Date().toLocaleString("zh-TW")
+  });
+  setMyBots(bots); renderMyBots();
+  alert("已儲存到「我的機器人」");
+}
+function renderMyBots(){
+  const bots=getMyBots(); mybots.innerHTML="";
+  if(!bots.length){ mybots.innerHTML='<div class="empty">還沒有儲存的機器人。組好後按「💾 儲存」。</div>'; return; }
+  bots.forEach((b,i)=>{const e=document.createElement("div");e.className="mybot";
+    e.innerHTML=`<div><b>${b.name}</b><div style="font-size:11px;color:var(--muted)">${b.stock||""} · ${b.savedAt||""}</div></div>
+      <div><span class="ld">載入</span> &nbsp; <span class="del">刪除</span></div>`;
+    e.querySelector(".ld").onclick=()=>{
+      botname.value=b.name; if(b.stock)stock.value=b.stock;
+      buyConds=b.buyConds||[]; sellConds=b.sellConds||[];
+      buyLogic.value=b.buyLogic||"AND"; sellLogic.value=b.sellLogic||"OR";
+      renderZones(); window.scrollTo({top:0,behavior:"smooth"});
+    };
+    e.querySelector(".del").onclick=()=>{ if(confirm("刪除這個機器人？")){const a=getMyBots();a.splice(i,1);setMyBots(a);renderMyBots();} };
+    mybots.appendChild(e)});
+}
+
+// ── 回測（接後端真實資料，失敗則離線回測）──
+async function runBacktest(){
+  errbox.innerHTML="";
+  if(!buyConds.length){alert("先加至少一個買進條件");return}
+  if(!sellConds.length){alert("先加至少一個賣出條件");return}
+  const code=stock.value.trim();
+  const bot={name:botname.value,
+    buy:{logic:buyLogic.value,conditions:buyConds.map(c=>c.cond)},
+    sell:{logic:sellLogic.value,conditions:sellConds.map(c=>c.cond)}};
+
+  runbtn.disabled=true; runbtn.textContent="⏳ 抓真實資料回測中…（首次約 20 秒）";
+  try{
+    const r = await fetch(API_BASE + "/api/backtest", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({stock:code, months:parseInt(months.value), bot})
+    });
+    const d = await r.json();
+    if(!r.ok || d.error){ throw new Error(d.error || ("HTTP "+r.status)); }
+    showResult({
+      trades:d.trades, winRate:d.win_rate, compoundReturn:d.compound_return_pct,
+      maxDrawdown:d.max_drawdown_pct, buyHoldReturn:d.buy_hold_return_pct,
+      finalSignal:d.final_signal, log:d.log, days:d.days, source:`${code} 真實資料`
+    });
+  }catch(e){
+    // 後端連不到 → 用內建模擬股價離線回測，並提示
+    const prices=fakePrices();
+    const r=runBot(bot,prices,DEFAULT_FEE_PCT);
+    showResult({...r, days:prices.length, source:"離線模擬股價"});
+    errbox.innerHTML=`<div class="err">⚠ 連不到後端（${e.message}），改用內建模擬股價示範。要看真實資料請先啟動後端，或在 config.js 設定後端網址。</div>`;
+  }finally{
+    runbtn.disabled=false; runbtn.textContent="▶ 用真實資料回測這個機器人";
+  }
+}
+
+function showResult(r){
+  result.classList.add("show");
+  st_trades.textContent=r.trades;
+  st_win.textContent=r.winRate+"%";
+  st_ret.textContent=(r.compoundReturn>=0?"+":"")+r.compoundReturn+"%";
+  st_ret.style.color=r.compoundReturn>=0?"var(--buy)":"var(--sell)";
+  st_mdd.textContent="-"+r.maxDrawdown+"%";
+  st_mdd.style.color="var(--sell)";
+  st_bh.textContent=(r.buyHoldReturn>=0?"+":"")+r.buyHoldReturn+"%";
+  st_days.textContent=r.days;
+  const sg=signal;sg.textContent="目前訊號："+r.finalSignal+"（"+r.source+"）";
+  sg.style.background=r.finalSignal==="買進"?"rgba(61,220,151,.15)":r.finalSignal==="賣出"?"rgba(255,107,107,.15)":"var(--surface2)";
+  sg.style.color=r.finalSignal==="買進"?"var(--buy)":r.finalSignal==="賣出"?"var(--sell)":"var(--muted)";
+  // 對比基準的評語
+  const v=verdict;
+  if(r.trades===0){ v.className="verdict lose"; v.innerHTML="這段期間沒有觸發任何交易——條件可能太嚴，試著放寬，或換一檔股票／拉長期間。"; }
+  else if(r.compoundReturn>r.buyHoldReturn){ v.className="verdict win"; v.innerHTML=`✅ 這個機器人贏過「同期買進持有」（${r.compoundReturn}% vs ${r.buyHoldReturn}%）。代表它的擇時有創造價值。`; }
+  else{ v.className="verdict lose"; v.innerHTML=`⚠️ 這個機器人輸給「同期買進持有」（${r.compoundReturn}% vs ${r.buyHoldReturn}%）。同期間只要抱著不動，報酬反而更高——回測勝率漂亮也別被騙了。`; }
+  log.innerHTML=r.log&&r.log.length?r.log.map(l=>`<div>${l}</div>`).join(""):"<div>沒有交易紀錄。</div>";
+}
+
+// ── 啟動 ──
+renderPalette(); renderZones(); renderFeed(); renderMyBots();
+detectBackend();
+loadSamples();
+</script>
+</body>
+</html>

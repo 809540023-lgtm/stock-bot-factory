@@ -1,0 +1,13 @@
+# Render Blueprint（放在 repo 根目錄，Render 會自動偵測）
+# 後端在 backend/ 子資料夾，引擎在 engine/。rootDir 設 backend，
+# app.py 以 __file__ 相對路徑找 ../engine，所以引擎照樣讀得到。
+services:
+  - type: web
+    name: stock-bot-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /api/health
+    autoDeploy: true

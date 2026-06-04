@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+backend/.venv/
+
+# OS / 編輯器
+.DS_Store
+*.log
+
+# Node（docs 產生器用）
+node_modules/

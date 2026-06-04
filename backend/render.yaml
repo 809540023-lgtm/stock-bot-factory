@@ -1,0 +1,11 @@
+# 備用：若你把「backend 資料夾本身」當成 repo 根目錄部署，用這份。
+# 一般情況請用 repo 根目錄的 ../render.yaml（含 rootDir: backend）。
+# 注意：這種部署方式下 engine/ 必須一起被包進來，否則 app.py 找不到引擎。
+services:
+  - type: web
+    name: stock-bot-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /api/health
