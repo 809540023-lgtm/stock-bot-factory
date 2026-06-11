@@ -143,6 +143,7 @@ class BacktestResult:
     buy_hold_return_pct: float = 0.0   # 同期「買進並抱著」的報酬，當作比較基準
     avg_return_pct: float = 0.0        # 平均每筆報酬
     fee_pct: float = 0.0               # 本次回測採用的來回成本
+    markers: List[Dict[str, Any]] = field(default_factory=list)  # 買賣點標記（畫圖用）
 
     @property
     def win_rate(self):
@@ -194,6 +195,7 @@ def run_bot(bot: Dict[str, Any], prices: List[float],
         if not holding and eval_rule_group(bot["buy"], indicators, i):
             holding = True
             buy_price = prices[i]
+            res.markers.append({"i": i, "type": "buy", "price": prices[i]})
             res.log.append(f"第{i}天 買進 @ {prices[i]:.2f}")
         elif holding and eval_rule_group(bot["sell"], indicators, i):
             holding = False
@@ -205,6 +207,7 @@ def run_bot(bot: Dict[str, Any], prices: List[float],
             equity *= (1 + ret / 100)
             peak = max(peak, equity)
             max_dd = max(max_dd, (peak - equity) / peak * 100)
+            res.markers.append({"i": i, "type": "sell", "price": prices[i]})
             res.log.append(f"第{i}天 賣出 @ {prices[i]:.2f}（這筆 {ret:+.1f}%，含成本）")
 
     # 最後一天給出當下訊號

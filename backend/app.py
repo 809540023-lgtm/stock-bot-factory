@@ -205,6 +205,8 @@ def api_backtest():
         "beats_buy_hold": r.beats_buy_hold,
         "final_signal": r.final_signal,
         "log": r.log,
+        "prices": closes,
+        "markers": r.markers,
         "disclaimer": "本結果為歷史回測，已扣交易成本，仍非投資建議，"
                       "不代表未來，投資有風險。",
     })

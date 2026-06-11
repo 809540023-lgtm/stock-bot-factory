@@ -64,6 +64,11 @@
   .verdict{font-size:13px;padding:10px 13px;border-radius:8px;margin-bottom:14px;line-height:1.5}
   .verdict.win{background:rgba(61,220,151,.12);color:var(--buy);border:1px solid rgba(61,220,151,.3)}
   .verdict.lose{background:rgba(255,180,84,.1);color:var(--accent2);border:1px solid rgba(255,180,84,.3)}
+  .chart{background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:14px}
+  .chart svg{display:block;width:100%;height:auto}
+  .chart .nochart{font-size:12px;color:var(--muted);text-align:center;padding:18px 0}
+  .chart-legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+  .chart-legend .b{color:var(--buy)} .chart-legend .s{color:var(--sell)}
   .log{font-family:var(--mono);font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:12px;max-height:150px;overflow:auto}
   .log div{padding:2px 0}
   .err{background:rgba(255,107,107,.12);color:var(--sell);border:1px solid rgba(255,107,107,.3);padding:11px 13px;border-radius:8px;font-size:13px;margin-top:14px}
@@ -144,6 +149,7 @@
       <div class="result" id="result">
         <div class="signal" id="signal"></div>
         <div class="verdict" id="verdict"></div>
+        <div class="chart" id="chart"></div>
         <div class="stats">
           <div class="stat"><div class="v" id="st_trades">—</div><div class="l">交易次數</div></div>
           <div class="stat"><div class="v" id="st_win">—</div><div class="l">勝率</div></div>
@@ -341,13 +347,14 @@ async function runBacktest(){
     showResult({
       trades:d.trades, winRate:d.win_rate, compoundReturn:d.compound_return_pct,
       maxDrawdown:d.max_drawdown_pct, buyHoldReturn:d.buy_hold_return_pct,
-      finalSignal:d.final_signal, log:d.log, days:d.days, source:`${code} 真實資料`
+      finalSignal:d.final_signal, log:d.log, days:d.days, source:`${code} 真實資料`,
+      prices:d.prices, markers:d.markers
     });
   }catch(e){
     // 後端連不到 → 用內建模擬股價離線回測，並提示
     const prices=fakePrices();
     const r=runBot(bot,prices,DEFAULT_FEE_PCT);
-    showResult({...r, days:prices.length, source:"離線模擬股價"});
+    showResult({...r, days:prices.length, source:"離線模擬股價", prices, markers:r.markers});
     errbox.innerHTML=`<div class="err">⚠ 連不到後端（${e.message}），改用內建模擬股價示範。要看真實資料請先啟動後端，或在 config.js 設定後端網址。</div>`;
   }finally{
     runbtn.disabled=false; runbtn.textContent="▶ 用真實資料回測這個機器人";
@@ -373,6 +380,70 @@ function showResult(r){
   else if(r.compoundReturn>r.buyHoldReturn){ v.className="verdict win"; v.innerHTML=`✅ 這個機器人贏過「同期買進持有」（${r.compoundReturn}% vs ${r.buyHoldReturn}%）。代表它的擇時有創造價值。`; }
   else{ v.className="verdict lose"; v.innerHTML=`⚠️ 這個機器人輸給「同期買進持有」（${r.compoundReturn}% vs ${r.buyHoldReturn}%）。同期間只要抱著不動，報酬反而更高——回測勝率漂亮也別被騙了。`; }
   log.innerHTML=r.log&&r.log.length?r.log.map(l=>`<div>${l}</div>`).join(""):"<div>沒有交易紀錄。</div>";
+  drawChart(r.prices, r.markers);
+}
+
+// ── 純 SVG 股價走勢圖 + 買賣標記（無外部函式庫）──
+function drawChart(prices, markers){
+  const box=document.getElementById("chart");
+  if(!box) return;
+  if(!prices||!Array.isArray(prices)||prices.length<2){
+    box.innerHTML='<div class="nochart">無足夠資料繪圖</div>';
+    return;
+  }
+  const W=700,H=220,padL=46,padR=12,padT=14,padB=22;
+  const n=prices.length;
+  let min=Math.min(...prices),max=Math.max(...prices);
+  const margin=(max-min)*0.05||max*0.05||1;
+  min-=margin; max+=margin;
+  const X=i=>padL+(W-padL-padR)*(n>1?i/(n-1):0);
+  const Y=p=>padT+(H-padT-padB)*(1-(p-min)/(max-min));
+  const fmt=v=>{const a=Math.abs(v);return a>=1000?v.toFixed(0):a>=100?v.toFixed(1):v.toFixed(2);};
+
+  // 格線 + Y 軸刻度（4 條）
+  let grid="";
+  for(let g=0;g<=3;g++){
+    const v=min+(max-min)*g/3, y=Y(v);
+    grid+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1" opacity=".6"/>`;
+    grid+=`<text x="${padL-6}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--muted)">${fmt(v)}</text>`;
+  }
+  // X 軸刻度（頭/中/尾）
+  [[0,"start"],[Math.floor((n-1)/2),"middle"],[n-1,"end"]].forEach(([i,anchor])=>{
+    grid+=`<text x="${X(i).toFixed(1)}" y="${H-6}" text-anchor="${anchor}" font-size="10" fill="var(--muted)">第${i}天</text>`;
+  });
+
+  // 折線
+  const path=prices.map((p,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(p).toFixed(1)}`).join("");
+
+  // 買賣三角標記
+  let marks="";
+  (markers||[]).forEach(m=>{
+    if(m==null||typeof m.i!=="number"||typeof m.price!=="number"||m.i<0||m.i>=n) return;
+    const x=X(m.i), y=Y(m.price), s=6;
+    if(m.type==="buy"){ // 向上三角，畫在點下方一點
+      marks+=`<path d="M${(x-s).toFixed(1)},${(y+s+4).toFixed(1)} L${(x+s).toFixed(1)},${(y+s+4).toFixed(1)} L${x.toFixed(1)},${(y+4).toFixed(1)} Z" fill="var(--buy)"><title>第${m.i}天 買進 @ ${fmt(m.price)}</title></path>`;
+    }else{              // 向下三角，畫在點上方一點
+      marks+=`<path d="M${(x-s).toFixed(1)},${(y-s-4).toFixed(1)} L${(x+s).toFixed(1)},${(y-s-4).toFixed(1)} L${x.toFixed(1)},${(y-4).toFixed(1)} Z" fill="var(--sell)"><title>第${m.i}天 賣出 @ ${fmt(m.price)}</title></path>`;
+    }
+  });
+
+  // 最新價小標
+  const lastX=X(n-1),lastY=Y(prices[n-1]);
+  const lastTag=`<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.5" fill="var(--accent)"/>`;
+
+  box.innerHTML=
+    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="回測股價走勢圖">
+      ${grid}
+      <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+      ${marks}${lastTag}
+    </svg>
+    <div class="chart-legend">
+      <span><span class="b">▲</span> 買進</span>
+      <span><span class="s">▼</span> 賣出</span>
+      <span>最高 ${fmt(Math.max(...prices))}</span>
+      <span>最低 ${fmt(Math.min(...prices))}</span>
+      <span>最新 ${fmt(prices[n-1])}</span>
+    </div>`;
 }
 
 // ── 啟動 ──

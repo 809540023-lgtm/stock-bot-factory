@@ -28,14 +28,14 @@ function evalGroup(g,ind,i){const r=g.conditions.map(c=>evalCond(c,ind,i));if(!r
 const DEFAULT_FEE_PCT=0.585;
 
 function runBot(bot,prices,feePct=0){
-  if(!prices||!prices.length)return{trades:0,wins:0,winRate:0,totalReturn:0,compoundReturn:0,maxDrawdown:0,buyHoldReturn:0,avgReturn:0,feePct,finalSignal:"觀望",log:[]};
+  if(!prices||!prices.length)return{trades:0,wins:0,winRate:0,totalReturn:0,compoundReturn:0,maxDrawdown:0,buyHoldReturn:0,avgReturn:0,feePct,finalSignal:"觀望",log:[],markers:[]};
   const kv=kd(prices);
   const ind={close:prices,kd_k:kv.k,kd_d:kv.d,rsi:rsi(prices),sma_5:sma(prices,5),sma_20:sma(prices,20),sma_60:sma(prices,60),pct:pctChange(prices)};
-  let trades=0,wins=0,totalRet=0,holding=false,buyP=0;const log=[];
+  let trades=0,wins=0,totalRet=0,holding=false,buyP=0;const log=[],markers=[];
   let equity=1,peak=1,maxDD=0;
   for(let i=1;i<prices.length;i++){
-    if(!holding&&evalGroup(bot.buy,ind,i)){holding=true;buyP=prices[i];log.push(`第${i}天 買進 @ ${prices[i].toFixed(2)}`);}
-    else if(holding&&evalGroup(bot.sell,ind,i)){holding=false;const ret=(prices[i]/buyP-1)*100-feePct;trades++;if(ret>0)wins++;totalRet+=ret;equity*=(1+ret/100);peak=Math.max(peak,equity);maxDD=Math.max(maxDD,(peak-equity)/peak*100);log.push(`第${i}天 賣出 @ ${prices[i].toFixed(2)}（這筆 ${ret>=0?"+":""}${ret.toFixed(1)}%，含成本）`);}
+    if(!holding&&evalGroup(bot.buy,ind,i)){holding=true;buyP=prices[i];markers.push({i,type:"buy",price:prices[i]});log.push(`第${i}天 買進 @ ${prices[i].toFixed(2)}`);}
+    else if(holding&&evalGroup(bot.sell,ind,i)){holding=false;const ret=(prices[i]/buyP-1)*100-feePct;trades++;if(ret>0)wins++;totalRet+=ret;equity*=(1+ret/100);peak=Math.max(peak,equity);maxDD=Math.max(maxDD,(peak-equity)/peak*100);markers.push({i,type:"sell",price:prices[i]});log.push(`第${i}天 賣出 @ ${prices[i].toFixed(2)}（這筆 ${ret>=0?"+":""}${ret.toFixed(1)}%，含成本）`);}
   }
   let sig="觀望";const last=prices.length-1;
   if(evalGroup(bot.buy,ind,last))sig="買進";
@@ -45,7 +45,7 @@ function runBot(bot,prices,feePct=0){
   return{trades,wins,winRate:trades?Math.round(wins/trades*1000)/10:0,
     totalReturn:r1(totalRet),compoundReturn:r1((equity-1)*100),maxDrawdown:r1(maxDD),
     buyHoldReturn:r1((prices[last]/prices[0]-1)*100),avgReturn:trades?r1(totalRet/trades):0,
-    feePct,finalSignal:sig,log};
+    feePct,finalSignal:sig,log,markers};
 }
 
 // 與 Python 版同樣的模擬股價（沙盒/離線用）
