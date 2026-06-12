@@ -1,0 +1,23 @@
+name: Keep backend awake
+
+# Render 免費方案閒置 15 分鐘會休眠，下次開要等 30~60 秒冷啟動。
+# 這個排程每 ~14 分鐘 ping 一次健康檢查，讓後端在使用時段保持清醒。
+# 註：GitHub 排程有最小 5 分鐘粒度、且高峰可能略延遲或跳過，屬正常。
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/health
+        run: |
+          echo "Pinging backend at $(date -u)"
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
+            https://stock-bot-backend-kcbc.onrender.com/api/health || echo "000")
+          echo "HTTP $code"
+          # 不讓偶發逾時把整個 workflow 標記成失敗（喚醒目的已達成）
+          if [ "$code" = "200" ]; then echo "awake ✓"; else echo "woke or transient (code=$code)"; fi
