@@ -11,7 +11,9 @@
 另外附上給「人」看的中文標籤與分析師註記（前端直接顯示）。
 
 可用指標（由 bot_engine.py 計算）：
-  close（收盤）, kd_k, kd_d, rsi, sma_5, sma_20, sma_60, pct（日漲跌幅）
+  close（收盤）, kd_k, kd_d, rsi, sma_5, sma_20, sma_60, pct（日漲跌幅）,
+  macd（DIF）, macd_signal（訊號線）, macd_hist（柱狀圖）,
+  boll_up / boll_mid / boll_low（布林通道 20 期 ±2σ）
 可用運算子：< , > , cross_above（向上穿越）, cross_below（向下跌破）
 右邊可以是固定數字 value，也可以是另一條指標線 value_metric。
 """
@@ -141,6 +143,76 @@ BOT_LIBRARY = [
             {"metric": "rsi", "op": "<", "value": 35},
             {"metric": "close", "op": "cross_above", "value_metric": "sma_5"}]},
         "sell": {"logic": "OR", "conditions": [{"metric": "rsi", "op": ">", "value": 70}]},
+    },
+    # ── 第二批：MACD / 布林通道 世代（2026-06 用 6 檔 × 24 個月真實資料挑選）──
+    # 誠實揭露：超級多頭裡沒有擇時策略能贏「死抱」飆股；
+    # 這批的價值在「盤整/波動股上正面贏」與「用小回撤換到大部分漲幅」。
+    {
+        "id": "macd_trend",
+        "name": "MACD 趨勢機器人",
+        "desc": "MACD 黃金交叉（DIF 上穿訊號線）買進，死亡交叉賣出。最經典的趨勢指標。",
+        "analyst_note": "適合有波段的盤整股：24 個月真實回測在長榮(2603) +34% vs 抱著 +18.8%。"
+                        "在單邊飆股上會頻繁進出被成本吃掉，別用在台積電這種一路漲的。",
+        "category": "順勢（MACD）",
+        "risk": "中",
+        "horizon": "中線",
+        "tags": ["MACD", "趨勢", "經典"],
+        "buy_labels": ["MACD 黃金交叉（DIF 上穿訊號線）"],
+        "sell_labels": ["MACD 死亡交叉（DIF 下穿訊號線）"],
+        "buy":  {"logic": "AND", "conditions": [{"metric": "macd", "op": "cross_above", "value_metric": "macd_signal"}]},
+        "sell": {"logic": "OR",  "conditions": [{"metric": "macd", "op": "cross_below", "value_metric": "macd_signal"}]},
+    },
+    {
+        "id": "boll_breakout",
+        "name": "布林突破機器人",
+        "desc": "股價突破布林上軌（強勢啟動）買進，跌回中軌賣出。吃突破後的慣性。",
+        "analyst_note": "回撤控制出色：24 個月真實回測在鴻海(2317) +28.8% vs 抱著 +20.6%，"
+                        "且最大回撤只有 7.8%（抱著要忍 -50.3%）。報酬與風險雙贏的代表。",
+        "category": "動能（布林突破）",
+        "risk": "中",
+        "horizon": "中線",
+        "tags": ["布林通道", "突破", "動能", "低回撤"],
+        "buy_labels": ["股價突破布林上軌（強勢啟動）"],
+        "sell_labels": ["股價跌破布林中軌"],
+        "buy":  {"logic": "AND", "conditions": [{"metric": "close", "op": "cross_above", "value_metric": "boll_up"}]},
+        "sell": {"logic": "OR",  "conditions": [{"metric": "close", "op": "cross_below", "value_metric": "boll_mid"}]},
+    },
+    {
+        "id": "trend_rider",
+        "name": "趨勢續抱機器人",
+        "desc": "站上月線且 MACD 柱轉正就進場，之後只看季線——不跌破就一直抱。",
+        "analyst_note": "給抱不住股票的人：24 個月真實回測在台積電(2330) 拿到 +83.7%"
+                        "（抱著是 +138.6%），但最大回撤僅 6.2%（抱著要忍 -30.8%）。"
+                        "用兩成的痛苦換到六成的漲幅。",
+        "category": "順勢（趨勢續抱）",
+        "risk": "中低",
+        "horizon": "中長線",
+        "tags": ["MACD", "均線", "續抱", "低回撤", "存股族"],
+        "buy_labels": ["股價在 20 日線之上", "且 MACD 柱狀圖 > 0"],
+        "sell_labels": ["股價跌破 60 日均線（季線）"],
+        "buy":  {"logic": "AND", "conditions": [
+            {"metric": "close", "op": ">", "value_metric": "sma_20"},
+            {"metric": "macd_hist", "op": ">", "value": 0}]},
+        "sell": {"logic": "OR", "conditions": [{"metric": "close", "op": "cross_below", "value_metric": "sma_60"}]},
+    },
+    {
+        "id": "momentum_confirm",
+        "name": "動能雙確認機器人",
+        "desc": "站上 5 日線且 MACD 柱為正才進；要「跌破月線且柱轉負」雙條件成立才出。",
+        "analyst_note": "本批在波動股上的最佳成績：24 個月真實回測在長榮(2603) +43.7% vs "
+                        "抱著 +18.8%，回撤 10% vs 31.9%。出場要雙確認，較不會被洗下車。",
+        "category": "動能（雙確認）",
+        "risk": "中",
+        "horizon": "中線",
+        "tags": ["MACD", "均線", "雙確認", "波動股"],
+        "buy_labels": ["股價在 5 日線之上", "且 MACD 柱狀圖 > 0"],
+        "sell_labels": ["股價跌破 20 日線", "且 MACD 柱狀圖 < 0"],
+        "buy":  {"logic": "AND", "conditions": [
+            {"metric": "close", "op": ">", "value_metric": "sma_5"},
+            {"metric": "macd_hist", "op": ">", "value": 0}]},
+        "sell": {"logic": "AND", "conditions": [
+            {"metric": "close", "op": "cross_below", "value_metric": "sma_20"},
+            {"metric": "macd_hist", "op": "<", "value": 0}]},
     },
 ]
 

@@ -201,12 +201,16 @@ const BUY_BLOCKS = [
   {label:"股價站上 5 日均線", cond:{metric:"close",op:"cross_above",value_metric:"sma_5"}},
   {label:"股價站上 60 日均線（季線）", cond:{metric:"close",op:"cross_above",value_metric:"sma_60"}},
   {label:"5 日線黃金交叉 20 日線", cond:{metric:"sma_5",op:"cross_above",value_metric:"sma_20"}},
+  {label:"MACD 黃金交叉（DIF 上穿訊號線）", cond:{metric:"macd",op:"cross_above",value_metric:"macd_signal"}},
+  {label:"跌破布林下軌（超跌）", cond:{metric:"close",op:"cross_below",value_metric:"boll_low"}},
 ];
 const SELL_BLOCKS = [
   {label:"KD 的 K > 80（超買）", cond:{metric:"kd_k",op:">",value:80}},
   {label:"RSI > 70（過熱）", cond:{metric:"rsi",op:">",value:70}},
   {label:"股價跌破 20 日均線", cond:{metric:"close",op:"cross_below",value_metric:"sma_20"}},
   {label:"5 日線死亡交叉 20 日線", cond:{metric:"sma_5",op:"cross_below",value_metric:"sma_20"}},
+  {label:"MACD 死亡交叉（DIF 下穿訊號線）", cond:{metric:"macd",op:"cross_below",value_metric:"macd_signal"}},
+  {label:"突破布林上軌（超漲）", cond:{metric:"close",op:"cross_above",value_metric:"boll_up"}},
 ];
 const FEED = [
   {who:"阿明", txt:"台積電 KD 在 18 了，歷史上這附近常反彈，加進我的抄底 bot 試試", when:"3 分鐘前"},

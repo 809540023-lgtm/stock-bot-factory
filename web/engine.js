@@ -5,6 +5,14 @@ function sma(p, n){const o=Array(p.length).fill(null);for(let i=n-1;i<p.length;i
 function rsi(p, n=14){const o=Array(p.length).fill(null),g=[],l=[];for(let i=1;i<p.length;i++){const d=p[i]-p[i-1];g.push(Math.max(d,0));l.push(Math.max(-d,0));if(i>=n){const ag=g.slice(-n).reduce((a,b)=>a+b,0)/n,al=l.slice(-n).reduce((a,b)=>a+b,0)/n;o[i]=al===0?100:100-100/(1+ag/al);}}return o;}
 function kd(p, n=9){const rsv=Array(p.length).fill(null);for(let i=n-1;i<p.length;i++){const w=p.slice(i-n+1,i+1),lo=Math.min(...w),hi=Math.max(...w);rsv[i]=hi===lo?50:(p[i]-lo)/(hi-lo)*100;}const k=Array(p.length).fill(null),d=Array(p.length).fill(null);let kp=50,dp=50;for(let i=0;i<p.length;i++){if(rsv[i]===null)continue;kp=kp*2/3+rsv[i]/3;dp=dp*2/3+kp/3;k[i]=kp;d[i]=dp;}return{k,d};}
 function pctChange(p){const o=[null];for(let i=1;i<p.length;i++)o.push(p[i-1]?(p[i]/p[i-1]-1)*100:null);return o;}
+// EMA：從第一筆開始遞推，回傳與 p 等長（不補 null）。與 Python 版 ema() 一致。
+function ema(p, n){if(!p.length)return[];const k=2/(n+1),o=[p[0]];for(let i=1;i<p.length;i++)o.push(p[i]*k+o[i-1]*(1-k));return o;}
+// 滾動「母體」標準差（除以 N）。前 n-1 天補 null。與 Python 版 rolling_std() 一致。
+function rollingStd(p, n){const o=Array(p.length).fill(null);for(let i=n-1;i<p.length;i++){const w=p.slice(i-n+1,i+1),m=w.reduce((a,b)=>a+b,0)/n;o[i]=Math.sqrt(w.reduce((a,b)=>a+(b-m)*(b-m),0)/n);}return o;}
+// MACD：dif=EMA12-EMA26、signal=dif 的 9 期 EMA、hist=dif-signal。與 Python 版 macd() 一致。
+function macd(p, fast=12, slow=26, signal=9){const ef=ema(p,fast),es=ema(p,slow),dif=ef.map((v,i)=>v-es[i]),sig=ema(dif,signal),hist=dif.map((v,i)=>v-sig[i]);return{dif,signal:sig,hist};}
+// 布林通道：中軌=20 日 SMA、上下軌=中軌±2 倍滾動母體標準差。與 Python 版 bollinger() 一致。
+function bollinger(p, n=20, k=2){const mid=sma(p,n),std=rollingStd(p,n),up=Array(p.length).fill(null),low=Array(p.length).fill(null);for(let i=0;i<p.length;i++){if(mid[i]!==null&&std[i]!==null){up[i]=mid[i]+k*std[i];low[i]=mid[i]-k*std[i];}}return{up,mid,low};}
 
 function valAt(ind,key,i){const s=ind[key];return s&&i<s.length?s[i]:null;}
 
@@ -30,7 +38,9 @@ const DEFAULT_FEE_PCT=0.585;
 function runBot(bot,prices,feePct=0){
   if(!prices||!prices.length)return{trades:0,wins:0,winRate:0,totalReturn:0,compoundReturn:0,maxDrawdown:0,buyHoldReturn:0,avgReturn:0,feePct,finalSignal:"觀望",log:[],markers:[]};
   const kv=kd(prices);
-  const ind={close:prices,kd_k:kv.k,kd_d:kv.d,rsi:rsi(prices),sma_5:sma(prices,5),sma_20:sma(prices,20),sma_60:sma(prices,60),pct:pctChange(prices)};
+  const mv=macd(prices),bv=bollinger(prices);
+  const ind={close:prices,kd_k:kv.k,kd_d:kv.d,rsi:rsi(prices),sma_5:sma(prices,5),sma_20:sma(prices,20),sma_60:sma(prices,60),pct:pctChange(prices),
+    macd:mv.dif,macd_signal:mv.signal,macd_hist:mv.hist,boll_up:bv.up,boll_mid:bv.mid,boll_low:bv.low};
   let trades=0,wins=0,totalRet=0,holding=false,buyP=0;const log=[],markers=[];
   let equity=1,peak=1,maxDD=0;
   for(let i=1;i<prices.length;i++){

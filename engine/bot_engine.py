@@ -66,6 +66,51 @@ def pct_change(prices: List[float]) -> List[float]:
     return out
 
 
+def ema(prices: List[float], n: int) -> List[float]:
+    """指數移動平均。從第一筆開始遞推，回傳與 prices 等長（不補 None）。"""
+    if not prices:
+        return []
+    k = 2 / (n + 1)
+    out = [prices[0]]
+    for i in range(1, len(prices)):
+        out.append(prices[i] * k + out[i - 1] * (1 - k))
+    return out
+
+
+def rolling_std(prices: List[float], n: int) -> List[float]:
+    """滾動「母體」標準差（除以 N，不是 N-1）。前 n-1 天沒有值，補 None。"""
+    out = [None] * len(prices)
+    for i in range(n - 1, len(prices)):
+        window = prices[i - n + 1:i + 1]
+        mean = sum(window) / n
+        out[i] = (sum((x - mean) ** 2 for x in window) / n) ** 0.5
+    return out
+
+
+def macd(prices: List[float], fast: int = 12, slow: int = 26,
+         signal: int = 9) -> Dict[str, List[float]]:
+    """MACD。dif = EMA(fast) - EMA(slow)；signal = dif 的 EMA(signal)；hist = dif - signal。"""
+    ema_fast = ema(prices, fast)
+    ema_slow = ema(prices, slow)
+    dif = [f - s for f, s in zip(ema_fast, ema_slow)]
+    sig = ema(dif, signal)
+    hist = [d - s for d, s in zip(dif, sig)]
+    return {"dif": dif, "signal": sig, "hist": hist}
+
+
+def bollinger(prices: List[float], n: int = 20, k: float = 2.0) -> Dict[str, List[float]]:
+    """布林通道。中軌 = n 日 SMA；上下軌 = 中軌 ± k 倍滾動母體標準差。前 n-1 天補 None。"""
+    mid = sma(prices, n)
+    std = rolling_std(prices, n)
+    up = [None] * len(prices)
+    low = [None] * len(prices)
+    for i in range(len(prices)):
+        if mid[i] is not None and std[i] is not None:
+            up[i] = mid[i] + k * std[i]
+            low[i] = mid[i] - k * std[i]
+    return {"up": up, "mid": mid, "low": low}
+
+
 # ── 規則判斷 ───────────────────────────────────────────────
 def _value_at(indicators: Dict[str, Any], key: str, i: int):
     """從算好的指標表取第 i 天的值。key 例如 'kd_k'、'sma_20'、'rsi'、'pct'。"""
@@ -173,6 +218,8 @@ def run_bot(bot: Dict[str, Any], prices: List[float],
 
     # 先算好所有可能用到的指標
     kd_v = kd(prices)
+    macd_v = macd(prices)
+    boll_v = bollinger(prices)
     indicators = {
         "close": prices,
         "kd_k": kd_v["k"],
@@ -182,6 +229,12 @@ def run_bot(bot: Dict[str, Any], prices: List[float],
         "sma_20": sma(prices, 20),
         "sma_60": sma(prices, 60),
         "pct": pct_change(prices),
+        "macd": macd_v["dif"],
+        "macd_signal": macd_v["signal"],
+        "macd_hist": macd_v["hist"],
+        "boll_up": boll_v["up"],
+        "boll_mid": boll_v["mid"],
+        "boll_low": boll_v["low"],
     }
 
     res = BacktestResult(fee_pct=round(fee_pct, 3))
