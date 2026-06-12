@@ -11,3 +11,8 @@ services:
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
     healthCheckPath: /api/health
     autoDeploy: true
+    envVars:
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_OFFICIAL_ACCOUNT_URL
+        sync: false

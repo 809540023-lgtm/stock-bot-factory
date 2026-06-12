@@ -20,6 +20,8 @@
   gunicorn app:app         # 正式（Render）
 """
 import sys, os, time, datetime, re, threading
+from html import escape
+from uuid import UUID
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
 
@@ -29,6 +31,8 @@ import requests
 
 from bot_engine import run_bot, DEFAULT_FEE_PCT      # 已驗證的回測引擎
 from bot_library import public_library, get_bot       # 8 個範例機器人資料庫
+from investment_plans.schemas import InvestmentPlanRequest, LineSubscriptionRequest, PlanReviewRequest
+from investment_plans.service import InvestmentPlanStore
 
 app = Flask(__name__)
 CORS(app)   # 讓前端（GitHub Pages）能跨網域呼叫
@@ -51,6 +55,7 @@ _CACHE = {}
 _CACHE_LOCK = threading.Lock()
 _last_request_ts = [0.0]
 _STOCK_RE = re.compile(r"^[0-9A-Za-z]{4,6}$")   # 台股代號：4 碼數字為主，ETF/權證可能含字母
+PLAN_STORE = InvestmentPlanStore(os.environ.get("INVESTMENT_PLAN_JSON_PATH", "data/investment_plans_store.json"))
 
 
 def _to_float(s):
@@ -210,6 +215,346 @@ def api_backtest():
         "disclaimer": "本結果為歷史回測，已扣交易成本，仍非投資建議，"
                       "不代表未來，投資有風險。",
     })
+
+
+# ── 投資計畫與 LINE 訂閱 MVP ────────────────────────────────
+def _money(value):
+    if value is None:
+        return "-"
+    return f"NT$ {float(value):,.0f}"
+
+
+def _split_csv(value):
+    if not value:
+        return []
+    return [item.strip() for item in str(value).replace("，", ",").split(",") if item.strip()]
+
+
+def _parse_uuid(value):
+    if not value:
+        return None
+    return UUID(str(value))
+
+
+def _plan_shell(title, body):
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{escape(title)}</title>
+  <style>
+    :root {{ --bg:#f7f8f2; --panel:#fff; --ink:#17201b; --muted:#5d6b63; --line:#d9dfd7; --accent:#25665b; --accent2:#9b4f2f; --soft:#eef3eb; }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font-family:"PingFang TC",system-ui,sans-serif; background:var(--bg); color:var(--ink); }}
+    .wrap {{ max-width:1120px; margin:0 auto; padding:28px 20px 64px; }}
+    .topbar {{ display:flex; justify-content:space-between; gap:14px; align-items:center; margin-bottom:18px; }}
+    .brand {{ color:var(--accent); font-weight:800; text-decoration:none; }}
+    .hero,.section {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:22px; }}
+    .section {{ margin-top:16px; }}
+    .eyebrow {{ color:var(--accent2); font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }}
+    h1 {{ margin:8px 0 10px; font-size:36px; line-height:1.12; }}
+    h2 {{ margin:0 0 12px; font-size:22px; }}
+    h3 {{ margin:0 0 8px; font-size:18px; }}
+    p,li {{ color:var(--muted); line-height:1.7; }}
+    .grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }}
+    .grid.three {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+    .card {{ border:1px solid var(--line); border-radius:8px; padding:16px; background:#fff; }}
+    .callout,.metric {{ background:var(--soft); border-radius:8px; padding:16px; }}
+    .label {{ color:var(--muted); font-size:13px; }}
+    .value {{ margin-top:6px; font-size:24px; font-weight:800; }}
+    .actions {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }}
+    .btn,button {{ border:0; border-radius:8px; background:var(--accent); color:#fff; padding:11px 14px; font:inherit; font-weight:800; text-decoration:none; cursor:pointer; }}
+    .btn.alt {{ background:var(--accent2); }}
+    form.stack {{ display:grid; gap:12px; }}
+    label {{ display:grid; gap:6px; color:var(--muted); font-size:14px; }}
+    input,select,textarea {{ width:100%; border:1px solid var(--line); border-radius:8px; padding:11px 12px; font:inherit; background:#fff; color:var(--ink); }}
+    textarea {{ min-height:84px; resize:vertical; }}
+    @media(max-width:820px) {{ h1 {{ font-size:30px; }} .grid,.grid.three {{ grid-template-columns:1fr; }} .topbar {{ align-items:flex-start; flex-direction:column; }} }}
+  </style>
+</head>
+<body><div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="/investment-plans">AI 單股投資計畫</a>
+    <a class="btn alt" href="/investment-plans/new">建立計畫</a>
+  </div>
+  {body}
+</div></body></html>"""
+
+
+@app.route("/investment-plans")
+def investment_plan_home():
+    user_id = request.args.get("user_id")
+    plans = PLAN_STORE.list_for_user(user_id)
+    cards = "".join(
+        "<article class='card'>"
+        f"<div class='eyebrow'>{escape(plan.request.plan_type)}</div>"
+        f"<h3>{escape(plan.title)}</h3>"
+        f"<p>{escape(plan.summary)}</p>"
+        f"<div class='actions'><a class='btn' href='/investment-plans/{plan.id}'>查看計畫</a></div>"
+        "</article>"
+        for plan in plans[:12]
+    ) or "<p>目前還沒有投資計畫。</p>"
+    body = f"""
+    <section class="hero">
+      <div class="eyebrow">Single Stock Planning</div>
+      <h1>完整分析 + 每月零存整付</h1>
+      <p>會員可以針對單一股票建立完整分析計畫，也可以輸入每月 3,000 元、5,000 元或自訂金額，取得可追蹤的投入規則。</p>
+      <div class="actions">
+        <a class="btn" href="/investment-plans/new?plan_type=recurring_investment">零存整付</a>
+        <a class="btn alt" href="/investment-plans/new?plan_type=full_analysis">完整分析</a>
+        <a class="btn" href="/investment-plans/line-subscribe">LINE 每日推播</a>
+      </div>
+    </section>
+    <section class="section"><h2>已建立計畫</h2><div class="grid">{cards}</div></section>
+    """
+    return _plan_shell("AI 單股投資計畫", body)
+
+
+@app.route("/investment-plans/new")
+def investment_plan_new():
+    plan_type = request.args.get("plan_type", "recurring_investment")
+    recurring_selected = "selected" if plan_type == "recurring_investment" else ""
+    full_selected = "selected" if plan_type == "full_analysis" else ""
+    body = f"""
+    <section class="hero">
+      <div class="eyebrow">Create Plan</div>
+      <h1>建立會員單股投資計畫</h1>
+      <p>輸入股票、月存金額、風險偏好、原料與公開事件追蹤關鍵字，產生可每月更新的投資紀律。</p>
+    </section>
+    <section class="section">
+      <form class="stack" method="post" action="/investment-plans/create">
+        <div class="grid">
+          <label>會員 ID<input name="user_id" value="guest" required /></label>
+          <label>計畫類型<select name="plan_type"><option value="recurring_investment" {recurring_selected}>零存整付投資計畫</option><option value="full_analysis" {full_selected}>完整股票分析計畫</option></select></label>
+          <label>股票代號<input name="stock_symbol" value="2408" required /></label>
+          <label>股票名稱<input name="stock_name" value="南亞科" /></label>
+          <label>目前股價<input type="number" step="0.01" name="current_price" value="324" required /></label>
+          <label>每月投入金額<input type="number" step="1" name="monthly_amount" value="3000" /></label>
+          <label>初始投入金額<input type="number" step="1" name="initial_amount" value="0" /></label>
+          <label>投資年限<input type="number" step="1" name="investment_years" value="5" /></label>
+          <label>風險偏好<select name="risk_profile"><option value="conservative">保守</option><option value="balanced" selected>穩健</option><option value="aggressive">積極</option></select></label>
+          <label>產業屬性<select name="industry_cycle"><option value="unknown">未知</option><option value="stable">穩定型</option><option value="cyclical" selected>景氣循環型</option><option value="growth">成長型</option></select></label>
+          <label>估值狀態<select name="valuation_level"><option value="unknown">未知</option><option value="undervalued">偏低</option><option value="fair">合理</option><option value="expensive" selected>偏高</option><option value="overheated">過熱</option></select></label>
+          <label>最大可承受虧損 %<input type="number" step="1" name="max_loss_percent" value="25" /></label>
+          <label>目標報酬 %<input type="number" step="1" name="target_return_percent" value="50" /></label>
+          <label>目前平均成本<input type="number" step="0.01" name="average_cost" /></label>
+          <label>目前持有股數<input type="number" step="0.0001" name="shares_owned" value="0" /></label>
+        </div>
+        <label>原料/成本追蹤<textarea name="tracked_materials">DRAM, DDR4, DDR5, 矽晶圓, 光阻, 特用氣體, 封裝材料</textarea></label>
+        <label>公開事件追蹤關鍵字<textarea name="public_event_keywords">台塑 日本 行程, 南亞科 日本 客戶, 台塑集團 日本 投資, DRAM 日本 供應鏈</textarea></label>
+        <button type="submit">產生投資計畫</button>
+      </form>
+    </section>
+    """
+    return _plan_shell("建立投資計畫", body)
+
+
+@app.route("/investment-plans/create", methods=["POST"])
+def investment_plan_create():
+    try:
+        monthly_amount = request.form.get("monthly_amount")
+        average_cost = request.form.get("average_cost")
+        plan = PLAN_STORE.create(InvestmentPlanRequest(
+            user_id=request.form.get("user_id", "guest"),
+            stock_symbol=request.form["stock_symbol"],
+            stock_name=request.form.get("stock_name") or None,
+            plan_type=request.form["plan_type"],
+            current_price=float(request.form["current_price"]),
+            monthly_amount=float(monthly_amount) if monthly_amount else None,
+            initial_amount=float(request.form.get("initial_amount") or 0),
+            investment_years=int(request.form.get("investment_years") or 5),
+            risk_profile=request.form.get("risk_profile", "balanced"),
+            max_loss_percent=float(request.form.get("max_loss_percent") or 25),
+            target_return_percent=float(request.form.get("target_return_percent") or 50),
+            average_cost=float(average_cost) if average_cost else None,
+            shares_owned=float(request.form.get("shares_owned") or 0),
+            industry_cycle=request.form.get("industry_cycle", "unknown"),
+            valuation_level=request.form.get("valuation_level", "unknown"),
+            tracked_materials=_split_csv(request.form.get("tracked_materials")),
+            public_event_keywords=_split_csv(request.form.get("public_event_keywords")),
+        ))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 422
+    return ("", 303, {"Location": f"/investment-plans/{plan.id}"})
+
+
+@app.route("/investment-plans/line-subscribe")
+def investment_line_subscribe():
+    line_url = os.environ.get("LINE_OFFICIAL_ACCOUNT_URL", "")
+    action = f"<a class='btn' href='{escape(line_url)}'>加入 LINE 每日推播</a>" if line_url else "<p>尚未設定 LINE_OFFICIAL_ACCOUNT_URL。設定後，這裡會顯示一鍵加入 LINE 官方帳號的連結。</p>"
+    body = f"""
+    <section class="hero">
+      <div class="eyebrow">LINE Subscribe</div>
+      <h1>每天用 LINE 收 2408 投資更新</h1>
+      <p>會員只要點擊加入官方帳號，後續即可接收每日股價、原料、產業與公開事件追蹤摘要。正式推播前仍需完成 LINE userId 綁定與會員同意紀錄。</p>
+      <div class="actions">{action}</div>
+    </section>
+    <section class="section">
+      <h2>建立推播訂閱</h2>
+      <form class="stack" method="post" action="/investment-plans/line-subscribe">
+        <div class="grid">
+          <label>會員 ID<input name="user_id" value="guest" required /></label>
+          <label>計畫 ID<input name="plan_id" placeholder="可留空，或填入投資計畫 ID" /></label>
+          <label>LINE userId<input name="line_user_id" placeholder="後台綁定後可填入，會員可先留空" /></label>
+          <label>推播頻率<select name="frequency"><option value="daily" selected>每天</option><option value="weekly">每週</option></select></label>
+        </div>
+        <button type="submit">記錄 LINE 訂閱</button>
+      </form>
+    </section>
+    <section class="section">
+      <h2>推播內容</h2>
+      <ul>
+        <li>2408 最新股價與本月計畫建議。</li>
+        <li>DRAM、DDR4、DDR5、矽晶圓、光阻、特用氣體等成本/供應鏈訊號。</li>
+        <li>台塑、南亞科、日本客戶與合作消息等公開事件追蹤。</li>
+        <li>提醒會員本月應買進、加碼、暫停、停利或做風險檢查。</li>
+      </ul>
+    </section>
+    """
+    return _plan_shell("LINE 每日推播訂閱", body)
+
+
+@app.route("/investment-plans/line-subscribe", methods=["POST"])
+def investment_line_subscribe_create():
+    try:
+        PLAN_STORE.create_line_subscription(LineSubscriptionRequest(
+            user_id=request.form["user_id"],
+            plan_id=_parse_uuid(request.form.get("plan_id")),
+            line_user_id=request.form.get("line_user_id") or None,
+            frequency=request.form.get("frequency", "daily"),
+            consent=True,
+        ))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 422
+    return ("", 303, {"Location": f"/investment-plans/line-subscribe?user_id={escape(request.form['user_id'])}"})
+
+
+@app.route("/investment-plans/<plan_id>")
+def investment_plan_detail(plan_id):
+    try:
+        plan = PLAN_STORE.get(UUID(plan_id))
+    except Exception:
+        return jsonify({"error": "Investment plan not found"}), 404
+    metrics = f"""
+      <div class="metric"><div class="label">固定投入比例</div><div class="value">{plan.allocation.fixed_buy_ratio:.0%}</div></div>
+      <div class="metric"><div class="label">現金保留比例</div><div class="value">{plan.allocation.cash_reserve_ratio:.0%}</div></div>
+      <div class="metric"><div class="label">每月固定投入</div><div class="value">{_money(plan.allocation.monthly_fixed_buy_amount)}</div></div>
+    """
+    bands = "".join(f"<article class='card'><h3>{escape(item.name)}：{_money(item.price)}</h3><p>{escape(item.action)}</p></article>" for item in plan.price_bands)
+    rules = "".join(f"<li>{escape(item.trigger)}：{escape(item.action)}</li>" for item in plan.action_rules)
+    indicators = "".join(f"<li>{escape(item)}</li>" for item in plan.tracking_indicators)
+    risks = "".join(f"<li>{escape(item)}</li>" for item in plan.risk_notes)
+    latest = PLAN_STORE.latest_review(plan.id)
+    latest_html = ""
+    if latest:
+        latest_html = f"<section class='section callout'><div class='eyebrow'>Latest Monthly Review</div><h2>{escape(latest.recommendation_label)}</h2><p>{escape(latest.summary)}</p><p>價格位置：{escape(latest.price_position)}；建議投入：{_money(latest.suggested_action_amount)}；保留現金：{_money(latest.suggested_cash_reserve)}</p></section>"
+    body = f"""
+    <section class="hero">
+      <div class="eyebrow">{escape(plan.request.stock_symbol)} / {escape(plan.request.plan_type)}</div>
+      <h1>{escape(plan.title)}</h1>
+      <p>{escape(plan.summary)}</p>
+      <div class="actions"><a class="btn" href="/investment-plans/{plan.id}/review">本月更新</a><a class="btn alt" href="/investment-plans/api/plans/{plan.id}">JSON</a></div>
+    </section>
+    {latest_html}
+    <section class="section"><div class="grid three">{metrics}</div></section>
+    <section class="section"><h2>適合度判斷</h2><p>{escape(plan.suitability)}</p></section>
+    <section class="section"><h2>價格區間</h2><div class="grid">{bands}</div></section>
+    <section class="section grid"><article><h2>操作規則</h2><ul>{rules}</ul></article><article><h2>每月追蹤</h2><ul>{indicators}</ul></article><article><h2>風險提醒</h2><ul>{risks}</ul></article></section>
+    <section class="section"><h2>試算</h2><p>總計畫投入本金：{_money(plan.projection.invested_principal)}；目標停利參考價：{_money(plan.projection.target_take_profit_price)}；最大虧損檢查價：{_money(plan.projection.max_loss_review_price)}。</p><p>{escape(plan.disclosure)}</p></section>
+    """
+    return _plan_shell(plan.title, body)
+
+
+@app.route("/investment-plans/<plan_id>/review")
+def investment_plan_review_new(plan_id):
+    try:
+        plan = PLAN_STORE.get(UUID(plan_id))
+    except Exception:
+        return jsonify({"error": "Investment plan not found"}), 404
+    avg = plan.request.average_cost or plan.request.current_price
+    body = f"""
+    <section class="hero"><div class="eyebrow">Monthly Review</div><h1>{escape(plan.title)} 本月更新</h1><p>輸入最新股價、可用現金與基本面趨勢，系統會判斷本月應該固定買進、加碼、暫停、停利或做風險檢查。</p></section>
+    <section class="section"><form class="stack" method="post" action="/investment-plans/{plan.id}/reviews"><div class="grid">
+      <label>最新股價<input type="number" step="0.01" name="current_price" value="{plan.request.current_price}" required /></label>
+      <label>目前平均成本<input type="number" step="0.01" name="average_cost" value="{avg}" /></label>
+      <label>目前持有股數<input type="number" step="0.0001" name="shares_owned" value="{plan.request.shares_owned}" /></label>
+      <label>可用現金<input type="number" step="1" name="available_cash" value="{plan.request.monthly_amount or 0}" /></label>
+      <label>月營收趨勢<select name="revenue_trend"><option value="unknown">未知</option><option value="improving">轉強</option><option value="stable" selected>穩定</option><option value="weakening">轉弱</option></select></label>
+      <label>獲利趨勢<select name="earnings_trend"><option value="unknown">未知</option><option value="improving">轉強</option><option value="stable" selected>穩定</option><option value="weakening">轉弱</option></select></label>
+      <label>原料/成本趨勢<select name="material_cost_trend"><option value="unknown">未知</option><option value="improving">成本改善</option><option value="stable" selected>穩定</option><option value="weakening">成本惡化</option></select></label>
+      <label>全球同業/原料股趨勢<select name="global_peer_trend"><option value="unknown">未知</option><option value="improving">轉強</option><option value="stable" selected>穩定</option><option value="weakening">轉弱</option></select></label>
+      <label>公開事件訊號<select name="public_event_signal"><option value="unknown">未知</option><option value="improving">正向</option><option value="stable" selected>中性</option><option value="weakening">負向</option></select></label>
+      <label>估值狀態<select name="valuation_level"><option value="unknown">未知</option><option value="undervalued">偏低</option><option value="fair">合理</option><option value="expensive" selected>偏高</option><option value="overheated">過熱</option></select></label>
+    </div><label>本月備註<input name="notes" placeholder="例如：財報公布、產業報價、個人現金流變化" /></label><button type="submit">產生本月建議</button></form></section>
+    """
+    return _plan_shell("本月投資更新", body)
+
+
+@app.route("/investment-plans/<plan_id>/reviews", methods=["POST"])
+def investment_plan_review_create(plan_id):
+    try:
+        avg = request.form.get("average_cost")
+        PLAN_STORE.create_review(UUID(plan_id), PlanReviewRequest(
+            current_price=float(request.form["current_price"]),
+            average_cost=float(avg) if avg else None,
+            shares_owned=float(request.form.get("shares_owned") or 0),
+            available_cash=float(request.form.get("available_cash") or 0),
+            revenue_trend=request.form.get("revenue_trend", "unknown"),
+            earnings_trend=request.form.get("earnings_trend", "unknown"),
+            material_cost_trend=request.form.get("material_cost_trend", "unknown"),
+            global_peer_trend=request.form.get("global_peer_trend", "unknown"),
+            public_event_signal=request.form.get("public_event_signal", "unknown"),
+            valuation_level=request.form.get("valuation_level", "unknown"),
+            notes=request.form.get("notes") or None,
+        ))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 422
+    return ("", 303, {"Location": f"/investment-plans/{plan_id}"})
+
+
+@app.route("/investment-plans/api/plans", methods=["GET", "POST"])
+def investment_plan_api_plans():
+    if request.method == "POST":
+        try:
+            plan = PLAN_STORE.create(InvestmentPlanRequest(**(request.get_json(force=True, silent=True) or {})))
+        except Exception as exc:
+            return jsonify({"data": None, "error": str(exc)}), 422
+        return jsonify({"data": plan.model_dump(mode="json"), "error": None})
+    return jsonify({"data": [p.model_dump(mode="json") for p in PLAN_STORE.list_for_user(request.args.get("user_id"))], "error": None})
+
+
+@app.route("/investment-plans/api/plans/<plan_id>")
+def investment_plan_api_get(plan_id):
+    try:
+        plan = PLAN_STORE.get(UUID(plan_id))
+    except Exception:
+        return jsonify({"data": None, "error": "Investment plan not found"}), 404
+    return jsonify({"data": plan.model_dump(mode="json"), "error": None})
+
+
+@app.route("/investment-plans/api/plans/<plan_id>/reviews", methods=["GET", "POST"])
+def investment_plan_api_reviews(plan_id):
+    try:
+        pid = UUID(plan_id)
+        if request.method == "POST":
+            review = PLAN_STORE.create_review(pid, PlanReviewRequest(**(request.get_json(force=True, silent=True) or {})))
+            return jsonify({"data": review.model_dump(mode="json"), "error": None})
+        PLAN_STORE.get(pid)
+        return jsonify({"data": [r.model_dump(mode="json") for r in PLAN_STORE.list_reviews(pid)], "error": None})
+    except Exception as exc:
+        return jsonify({"data": None, "error": str(exc)}), 422
+
+
+@app.route("/investment-plans/api/line-subscriptions", methods=["GET", "POST"])
+def investment_line_subscription_api():
+    if request.method == "POST":
+        try:
+            sub = PLAN_STORE.create_line_subscription(LineSubscriptionRequest(**(request.get_json(force=True, silent=True) or {})))
+        except Exception as exc:
+            return jsonify({"data": None, "error": str(exc)}), 422
+        return jsonify({"data": sub.model_dump(mode="json"), "error": None})
+    return jsonify({"data": [s.model_dump(mode="json") for s in PLAN_STORE.list_line_subscriptions(request.args.get("user_id"))], "error": None})
 
 
 if __name__ == "__main__":
