@@ -14,5 +14,9 @@ services:
     envVars:
       - key: LINE_CHANNEL_ACCESS_TOKEN
         sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
       - key: LINE_OFFICIAL_ACCOUNT_URL
         sync: false
+      - key: LINE_WEBHOOK_URL
+        value: https://stock-bot-backend-kcbc.onrender.com/investment-plans/line-webhook

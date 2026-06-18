@@ -19,8 +19,10 @@
   python app.py            # 開發
   gunicorn app:app         # 正式（Render）
 """
+import base64, hashlib, hmac
 import sys, os, time, datetime, re, threading
 from html import escape
+from secrets import compare_digest
 from uuid import UUID
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
@@ -56,6 +58,7 @@ _CACHE_LOCK = threading.Lock()
 _last_request_ts = [0.0]
 _STOCK_RE = re.compile(r"^[0-9A-Za-z]{4,6}$")   # 台股代號：4 碼數字為主，ETF/權證可能含字母
 PLAN_STORE = InvestmentPlanStore(os.environ.get("INVESTMENT_PLAN_JSON_PATH", "data/investment_plans_store.json"))
+LINE_BINDING_RE = re.compile(r"^(?:綁定|绑定|bind|subscribe|訂閱)\s*[:：]?\s*(?P<user_id>[0-9A-Za-z_.@-]{1,80})$", re.IGNORECASE)
 
 
 def _to_float(s):
@@ -130,6 +133,56 @@ def fetch_prices(stock, months=12):
 
 def _valid_stock(stock):
     return bool(stock and _STOCK_RE.match(stock))
+
+
+def _verify_line_signature(raw_body: bytes, signature: str | None) -> bool:
+    channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "")
+    if not channel_secret or not signature:
+        return False
+    digest = hmac.new(channel_secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
+    expected = base64.b64encode(digest).decode("utf-8")
+    return compare_digest(expected, signature)
+
+
+def _line_reply(reply_token: str | None, text: str) -> bool:
+    access_token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+    if not access_token or not reply_token:
+        return False
+    try:
+        resp = requests.post(
+            "https://api.line.me/v2/bot/message/reply",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"replyToken": reply_token, "messages": [{"type": "text", "text": text[:5000]}]},
+            timeout=10,
+        )
+        if resp.status_code >= 300:
+            print(f"[LINE] reply failed: {resp.status_code} {resp.text[:300]}")
+            return False
+        return True
+    except Exception as exc:
+        print(f"[LINE] reply exception: {exc}")
+        return False
+
+
+def _bind_line_user(line_user_id: str, member_id: str, frequency: str = "daily"):
+    return PLAN_STORE.create_line_subscription(LineSubscriptionRequest(
+        user_id=member_id,
+        line_user_id=line_user_id,
+        frequency=frequency,
+        consent=True,
+    ))
+
+
+def _line_binding_help() -> str:
+    return (
+        "歡迎加入 2408 每日投資更新。\n"
+        "請回覆：綁定 你的會員ID\n"
+        "例如：綁定 guest\n"
+        "完成後，系統會把這個 LINE 帳號綁定到你的投資計畫訂閱。"
+    )
 
 
 # ── API ───────────────────────────────────────────────────
@@ -382,16 +435,26 @@ def investment_plan_create():
 @app.route("/investment-plans/line-subscribe")
 def investment_line_subscribe():
     line_url = os.environ.get("LINE_OFFICIAL_ACCOUNT_URL", "")
+    webhook_url = os.environ.get("LINE_WEBHOOK_URL", "https://stock-bot-backend-kcbc.onrender.com/investment-plans/line-webhook")
     action = f"<a class='btn' href='{escape(line_url)}'>加入 LINE 每日推播</a>" if line_url else "<p>尚未設定 LINE_OFFICIAL_ACCOUNT_URL。設定後，這裡會顯示一鍵加入 LINE 官方帳號的連結。</p>"
     body = f"""
     <section class="hero">
       <div class="eyebrow">LINE Subscribe</div>
       <h1>每天用 LINE 收 2408 投資更新</h1>
-      <p>會員只要點擊加入官方帳號，後續即可接收每日股價、原料、產業與公開事件追蹤摘要。正式推播前仍需完成 LINE userId 綁定與會員同意紀錄。</p>
+      <p>會員點擊加入官方帳號後，只要在 LINE 對話輸入「綁定 會員ID」，系統會自動完成 LINE userId 綁定。</p>
       <div class="actions">{action}</div>
     </section>
     <section class="section">
-      <h2>建立推播訂閱</h2>
+      <h2>會員綁定方式</h2>
+      <ol>
+        <li>先點「加入 LINE 每日推播」。</li>
+        <li>在 LINE 對話輸入：綁定 guest，或把 guest 換成你的會員 ID。</li>
+        <li>看到「LINE 綁定完成」回覆後，即可接收後續推播。</li>
+      </ol>
+      <p>LINE 後台 Webhook URL：<code>{escape(webhook_url)}</code></p>
+    </section>
+    <section class="section">
+      <h2>手動建立推播訂閱</h2>
       <form class="stack" method="post" action="/investment-plans/line-subscribe">
         <div class="grid">
           <label>會員 ID<input name="user_id" value="guest" required /></label>
@@ -428,6 +491,60 @@ def investment_line_subscribe_create():
     except Exception as exc:
         return jsonify({"error": str(exc)}), 422
     return ("", 303, {"Location": f"/investment-plans/line-subscribe?user_id={escape(request.form['user_id'])}"})
+
+
+@app.route("/investment-plans/line-webhook", methods=["GET"])
+def investment_line_webhook_status():
+    return jsonify({
+        "status": "ok",
+        "webhook": "ready",
+        "requires": ["LINE_CHANNEL_SECRET", "LINE_CHANNEL_ACCESS_TOKEN"],
+    })
+
+
+@app.route("/investment-plans/line-webhook", methods=["POST"])
+def investment_line_webhook():
+    raw_body = request.get_data()
+    signature = request.headers.get("X-Line-Signature")
+    if not _verify_line_signature(raw_body, signature):
+        return jsonify({"error": "invalid LINE signature"}), 403
+
+    payload = request.get_json(force=True, silent=True) or {}
+    handled = []
+    for event in payload.get("events", []):
+        event_type = event.get("type")
+        source = event.get("source") or {}
+        line_user_id = source.get("userId")
+        reply_token = event.get("replyToken")
+
+        if not line_user_id:
+            handled.append({"type": event_type, "status": "ignored_without_user_id"})
+            continue
+
+        if event_type == "follow":
+            _line_reply(reply_token, _line_binding_help())
+            handled.append({"type": "follow", "status": "prompted_binding"})
+            continue
+
+        if event_type == "message" and (event.get("message") or {}).get("type") == "text":
+            text = ((event.get("message") or {}).get("text") or "").strip()
+            match = LINE_BINDING_RE.match(text)
+            if match:
+                member_id = match.group("user_id")
+                subscription = _bind_line_user(line_user_id, member_id)
+                _line_reply(
+                    reply_token,
+                    f"LINE 綁定完成。\n會員 ID：{member_id}\n狀態：{subscription.status}\n之後可接收 2408 每日投資更新。",
+                )
+                handled.append({"type": "message", "status": "bound", "user_id": member_id})
+            else:
+                _line_reply(reply_token, _line_binding_help())
+                handled.append({"type": "message", "status": "prompted_binding"})
+            continue
+
+        handled.append({"type": event_type, "status": "ignored"})
+
+    return jsonify({"status": "ok", "handled": handled})
 
 
 @app.route("/investment-plans/<plan_id>")
