@@ -148,6 +148,8 @@ def _line_reply(reply_token: str | None, text: str) -> bool:
     access_token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
     if not access_token or not reply_token:
         return False
+    if set(reply_token) == {"0"}:
+        return False
     try:
         resp = requests.post(
             "https://api.line.me/v2/bot/message/reply",
@@ -156,7 +158,7 @@ def _line_reply(reply_token: str | None, text: str) -> bool:
                 "Content-Type": "application/json",
             },
             json={"replyToken": reply_token, "messages": [{"type": "text", "text": text[:5000]}]},
-            timeout=10,
+            timeout=2,
         )
         if resp.status_code >= 300:
             print(f"[LINE] reply failed: {resp.status_code} {resp.text[:300]}")
@@ -519,6 +521,10 @@ def investment_line_webhook():
 
         if not line_user_id:
             handled.append({"type": event_type, "status": "ignored_without_user_id"})
+            continue
+
+        if str(event.get("webhookEventId", "")).startswith("dummy"):
+            handled.append({"type": event_type, "status": "verified_dummy_event"})
             continue
 
         if event_type == "follow":
