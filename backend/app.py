@@ -291,9 +291,279 @@ def _parse_uuid(value):
     return UUID(str(value))
 
 
+LANG_LABELS = {
+    "zh-TW": "繁體中文",
+    "zh-CN": "简体中文",
+    "ja": "日本語",
+    "en": "English",
+}
+LANG_ALIASES = {
+    "zh": "zh-TW",
+    "zh-Hant": "zh-TW",
+    "zh-Hans": "zh-CN",
+    "tw": "zh-TW",
+    "cn": "zh-CN",
+    "jp": "ja",
+}
+TEXT = {
+    "brand": {
+        "zh-TW": "AI 單股投資計畫",
+        "zh-CN": "AI 单股投资计划",
+        "ja": "AI 個別株投資プラン",
+        "en": "AI Single-Stock Plan",
+    },
+    "create_plan": {
+        "zh-TW": "建立計畫",
+        "zh-CN": "建立计划",
+        "ja": "プラン作成",
+        "en": "Create plan",
+    },
+    "home_title": {
+        "zh-TW": "完整分析 + 每月零存整付",
+        "zh-CN": "完整分析 + 每月定投",
+        "ja": "詳細分析 + 毎月積立",
+        "en": "Full analysis + monthly investing",
+    },
+    "home_intro": {
+        "zh-TW": "會員可以針對單一股票建立完整分析計畫，也可以輸入每月 3,000 元、5,000 元或自訂金額，取得可追蹤的投入規則。",
+        "zh-CN": "会员可以针对单一股票建立完整分析计划，也可以输入每月 3,000 元、5,000 元或自定义金额，取得可追踪的投入规则。",
+        "ja": "会員は個別株の詳細分析プランを作成し、毎月 3,000 元、5,000 元、または任意金額の積立ルールを確認できます。",
+        "en": "Members can create a full single-stock analysis plan or enter a monthly amount such as NT$3,000 or NT$5,000 to receive trackable investing rules.",
+    },
+    "recurring": {
+        "zh-TW": "零存整付",
+        "zh-CN": "定期定额",
+        "ja": "毎月積立",
+        "en": "Monthly plan",
+    },
+    "full_analysis": {
+        "zh-TW": "完整分析",
+        "zh-CN": "完整分析",
+        "ja": "詳細分析",
+        "en": "Full analysis",
+    },
+    "line_push": {
+        "zh-TW": "LINE 每日推播",
+        "zh-CN": "LINE 每日推送",
+        "ja": "LINE 毎日通知",
+        "en": "LINE daily alerts",
+    },
+    "plans_created": {
+        "zh-TW": "已建立計畫",
+        "zh-CN": "已建立计划",
+        "ja": "作成済みプラン",
+        "en": "Created plans",
+    },
+    "no_plans": {
+        "zh-TW": "目前還沒有投資計畫。",
+        "zh-CN": "目前还没有投资计划。",
+        "ja": "投資プランはまだありません。",
+        "en": "No investment plans yet.",
+    },
+    "view_plan": {
+        "zh-TW": "查看計畫",
+        "zh-CN": "查看计划",
+        "ja": "プランを見る",
+        "en": "View plan",
+    },
+    "tutorials": {
+        "zh-TW": "教學影片",
+        "zh-CN": "教学视频",
+        "ja": "操作動画",
+        "en": "Tutorial videos",
+    },
+    "tutorial_intro": {
+        "zh-TW": "先放可上線的影片腳本與操作分鏡；之後可替換成正式錄製的 mp4。",
+        "zh-CN": "先放可上线的视频脚本与操作分镜；之后可替换成正式录制的 mp4。",
+        "ja": "まず公開可能な台本と操作シーンを置き、後で正式な mp4 に差し替えます。",
+        "en": "This area contains publish-ready scripts and storyboards now; later it can be replaced with recorded MP4 videos.",
+    },
+    "watch_script": {
+        "zh-TW": "看腳本",
+        "zh-CN": "看脚本",
+        "ja": "台本を見る",
+        "en": "View script",
+    },
+    "create_title": {
+        "zh-TW": "建立會員單股投資計畫",
+        "zh-CN": "建立会员单股投资计划",
+        "ja": "会員向け個別株プラン作成",
+        "en": "Create a member stock plan",
+    },
+    "create_intro": {
+        "zh-TW": "輸入股票、月存金額、風險偏好、原料與公開事件追蹤關鍵字，產生可每月更新的投資紀律。",
+        "zh-CN": "输入股票、每月投入金额、风险偏好、原料与公开事件追踪关键词，生成可每月更新的投资纪律。",
+        "ja": "銘柄、毎月金額、リスク許容度、材料と公開イベントの追跡キーワードを入力して、毎月更新できる投資ルールを作成します。",
+        "en": "Enter the stock, monthly amount, risk profile, materials, and public-event keywords to generate an investment discipline you can review monthly.",
+    },
+    "line_title": {
+        "zh-TW": "每天用 LINE 收 2408 投資更新",
+        "zh-CN": "每天用 LINE 接收 2408 投资更新",
+        "ja": "LINE で 2408 の毎日更新を受け取る",
+        "en": "Receive daily 2408 updates on LINE",
+    },
+    "line_intro": {
+        "zh-TW": "會員點擊加入官方帳號後，只要在 LINE 對話輸入「綁定 會員ID」，系統會自動完成 LINE userId 綁定。",
+        "zh-CN": "会员点击加入官方账号后，只要在 LINE 对话输入「绑定 会员ID」，系统会自动完成 LINE userId 绑定。",
+        "ja": "公式アカウントを追加した後、LINE で「綁定 会員ID」と入力すると、LINE userId が自動で紐づきます。",
+        "en": "After adding the official account, members can type “bind memberID” in LINE to link their LINE userId automatically.",
+    },
+}
+
+TUTORIAL_VIDEOS = [
+    {
+        "id": "start",
+        "minutes": "01:00",
+        "title": {
+            "zh-TW": "一分鐘總入口導覽",
+            "zh-CN": "一分钟总入口导览",
+            "ja": "1分でわかる入口案内",
+            "en": "One-minute portal tour",
+        },
+        "summary": {
+            "zh-TW": "從總入口進入建立計畫、LINE 訂閱與教學區。",
+            "zh-CN": "从总入口进入建立计划、LINE 订阅与教学区。",
+            "ja": "入口からプラン作成、LINE 登録、チュートリアルへ進みます。",
+            "en": "Use the portal to reach plan creation, LINE subscription, and tutorials.",
+        },
+        "steps": {
+            "zh-TW": ["打開總入口。", "選擇零存整付或完整分析。", "右側可查看教學影片腳本。"],
+            "zh-CN": ["打开总入口。", "选择定投或完整分析。", "右侧查看教学视频脚本。"],
+            "ja": ["入口を開きます。", "積立または詳細分析を選びます。", "右側で動画台本を確認します。"],
+            "en": ["Open the portal.", "Choose monthly plan or full analysis.", "Use the right panel for tutorial scripts."],
+        },
+    },
+    {
+        "id": "plan",
+        "minutes": "02:00",
+        "title": {
+            "zh-TW": "建立 2408 投資計畫",
+            "zh-CN": "建立 2408 投资计划",
+            "ja": "2408 投資プランを作成",
+            "en": "Create a 2408 investment plan",
+        },
+        "summary": {
+            "zh-TW": "示範輸入會員 ID、股票、每月 3,000 元與風險條件。",
+            "zh-CN": "示范输入会员 ID、股票、每月 3,000 元与风险条件。",
+            "ja": "会員 ID、銘柄、毎月 3,000 元、リスク条件の入力を説明します。",
+            "en": "Shows member ID, stock, NT$3,000 monthly amount, and risk inputs.",
+        },
+        "steps": {
+            "zh-TW": ["點建立計畫。", "確認股票代號 2408、股票名稱南亞科。", "輸入每月投入金額與風險偏好。", "送出後查看價格區間與操作規則。"],
+            "zh-CN": ["点击建立计划。", "确认股票代码 2408、股票名称南亚科。", "输入每月投入金额与风险偏好。", "送出后查看价格区间与操作规则。"],
+            "ja": ["プラン作成を押します。", "銘柄コード 2408 と南亜科を確認します。", "毎月金額とリスク許容度を入力します。", "送信後、価格帯と操作ルールを確認します。"],
+            "en": ["Click create plan.", "Confirm stock code 2408 and Nanya Technology.", "Enter monthly amount and risk profile.", "Submit and review price bands and action rules."],
+        },
+    },
+    {
+        "id": "line",
+        "minutes": "01:30",
+        "title": {
+            "zh-TW": "LINE 綁定與每日推播",
+            "zh-CN": "LINE 绑定与每日推送",
+            "ja": "LINE 連携と毎日通知",
+            "en": "LINE binding and daily alerts",
+        },
+        "summary": {
+            "zh-TW": "教會員加入 LINE，並輸入「綁定 guest」完成綁定。",
+            "zh-CN": "教会员加入 LINE，并输入「绑定 guest」完成绑定。",
+            "ja": "LINE を追加し、「綁定 guest」と入力して連携します。",
+            "en": "Members add LINE and type “bind guest” to complete binding.",
+        },
+        "steps": {
+            "zh-TW": ["點加入 LINE 每日推播。", "在 LINE 對話輸入：綁定 guest。", "看到 LINE 綁定完成後，即可接收後續通知。"],
+            "zh-CN": ["点击加入 LINE 每日推送。", "在 LINE 对话输入：绑定 guest。", "看到 LINE 绑定完成后，即可接收后续通知。"],
+            "ja": ["LINE 毎日通知を追加します。", "LINE で「綁定 guest」と入力します。", "完了メッセージが出たら通知を受け取れます。"],
+            "en": ["Tap LINE daily alerts.", "Type: bind guest.", "After confirmation, the member can receive future alerts."],
+        },
+    },
+    {
+        "id": "review",
+        "minutes": "02:00",
+        "title": {
+            "zh-TW": "每月更新與風險檢查",
+            "zh-CN": "每月更新与风险检查",
+            "ja": "毎月更新とリスク確認",
+            "en": "Monthly review and risk check",
+        },
+        "summary": {
+            "zh-TW": "示範如何輸入最新股價、營收趨勢與估值狀態。",
+            "zh-CN": "示范如何输入最新股价、营收趋势与估值状态。",
+            "ja": "最新株価、売上傾向、バリュエーションを入力します。",
+            "en": "Shows how to enter latest price, revenue trend, and valuation state.",
+        },
+        "steps": {
+            "zh-TW": ["進入既有計畫。", "點本月更新。", "輸入最新股價與趨勢。", "查看本月買進、暫停、停利或風險檢查建議。"],
+            "zh-CN": ["进入既有计划。", "点击本月更新。", "输入最新股价与趋势。", "查看本月买进、暂停、止盈或风险检查建议。"],
+            "ja": ["既存プランを開きます。", "今月の更新を押します。", "最新価格と傾向を入力します。", "買い、停止、利確、リスク確認の提案を見ます。"],
+            "en": ["Open an existing plan.", "Click monthly review.", "Enter latest price and trends.", "Review buy, pause, take-profit, or risk-check guidance."],
+        },
+    },
+]
+
+
+def _current_lang():
+    raw = request.args.get("lang", "zh-TW")
+    lang = LANG_ALIASES.get(raw, raw)
+    return lang if lang in LANG_LABELS else "zh-TW"
+
+
+def _with_lang(path, lang=None):
+    lang = lang or _current_lang()
+    separator = "&" if "?" in path else "?"
+    return f"{path}{separator}lang={lang}"
+
+
+def _t(key, lang=None):
+    lang = lang or _current_lang()
+    value = TEXT.get(key, {})
+    return value.get(lang) or value.get("zh-TW") or key
+
+
+def _localized(value, lang=None):
+    lang = lang or _current_lang()
+    return value.get(lang) or value.get("zh-TW") or ""
+
+
+def _lang_switcher():
+    current = _current_lang()
+    links = []
+    base_path = request.path
+    for lang, label in LANG_LABELS.items():
+        cls = "active" if lang == current else ""
+        links.append(f"<a class='{cls}' href='{escape(_with_lang(base_path, lang))}'>{escape(label)}</a>")
+    return "".join(links)
+
+
+def _tutorial_sidebar(lang=None):
+    lang = lang or _current_lang()
+    cards = "".join(
+        f"""
+        <article class="video-card">
+          <div class="video-thumb"><span>{escape(item["minutes"])}</span></div>
+          <h3>{escape(_localized(item["title"], lang))}</h3>
+          <p>{escape(_localized(item["summary"], lang))}</p>
+          <a class="text-link" href="{escape(_with_lang(f'/investment-plans/tutorials/{item["id"]}', lang))}">{escape(_t("watch_script", lang))}</a>
+        </article>
+        """
+        for item in TUTORIAL_VIDEOS
+    )
+    return f"""
+    <aside class="tutorial-rail" aria-label="{escape(_t("tutorials", lang))}">
+      <div class="rail-head">
+        <div class="eyebrow">Tutorial</div>
+        <h2>{escape(_t("tutorials", lang))}</h2>
+        <p>{escape(_t("tutorial_intro", lang))}</p>
+      </div>
+      {cards}
+    </aside>
+    """
+
+
 def _plan_shell(title, body):
+    lang = _current_lang()
     return f"""<!doctype html>
-<html lang="zh-Hant">
+<html lang="{escape(lang)}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -302,11 +572,21 @@ def _plan_shell(title, body):
     :root {{ --bg:#f7f8f2; --panel:#fff; --ink:#17201b; --muted:#5d6b63; --line:#d9dfd7; --accent:#25665b; --accent2:#9b4f2f; --soft:#eef3eb; }}
     * {{ box-sizing:border-box; }}
     body {{ margin:0; font-family:"PingFang TC",system-ui,sans-serif; background:var(--bg); color:var(--ink); }}
-    .wrap {{ max-width:1120px; margin:0 auto; padding:28px 20px 64px; }}
+    .wrap {{ max-width:1320px; margin:0 auto; padding:28px 20px 64px; }}
     .topbar {{ display:flex; justify-content:space-between; gap:14px; align-items:center; margin-bottom:18px; }}
     .brand {{ color:var(--accent); font-weight:800; text-decoration:none; }}
+    .nav {{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }}
+    .lang {{ display:flex; gap:6px; flex-wrap:wrap; }}
+    .lang a {{ color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:7px 10px; text-decoration:none; font-size:13px; background:#fff; }}
+    .lang a.active {{ color:#fff; background:var(--accent); border-color:var(--accent); }}
+    .page-grid {{ display:grid; grid-template-columns:minmax(0,1fr) 330px; gap:18px; align-items:start; }}
+    main {{ min-width:0; }}
     .hero,.section {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:22px; }}
     .section {{ margin-top:16px; }}
+    .tutorial-rail {{ position:sticky; top:18px; display:grid; gap:12px; }}
+    .rail-head,.video-card {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }}
+    .video-thumb {{ aspect-ratio:16/9; border-radius:8px; background:linear-gradient(135deg,#1f5c51,#9b4f2f); display:flex; align-items:flex-end; justify-content:flex-end; padding:10px; color:#fff; font-weight:800; margin-bottom:12px; }}
+    .text-link {{ color:var(--accent); font-weight:800; text-decoration:none; }}
     .eyebrow {{ color:var(--accent2); font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }}
     h1 {{ margin:8px 0 10px; font-size:36px; line-height:1.12; }}
     h2 {{ margin:0 0 12px; font-size:22px; }}
@@ -325,20 +605,28 @@ def _plan_shell(title, body):
     label {{ display:grid; gap:6px; color:var(--muted); font-size:14px; }}
     input,select,textarea {{ width:100%; border:1px solid var(--line); border-radius:8px; padding:11px 12px; font:inherit; background:#fff; color:var(--ink); }}
     textarea {{ min-height:84px; resize:vertical; }}
+    @media(max-width:980px) {{ .page-grid {{ grid-template-columns:1fr; }} .tutorial-rail {{ position:static; }} }}
     @media(max-width:820px) {{ h1 {{ font-size:30px; }} .grid,.grid.three {{ grid-template-columns:1fr; }} .topbar {{ align-items:flex-start; flex-direction:column; }} }}
   </style>
 </head>
 <body><div class="wrap">
   <div class="topbar">
-    <a class="brand" href="/investment-plans">AI 單股投資計畫</a>
-    <a class="btn alt" href="/investment-plans/new">建立計畫</a>
+    <a class="brand" href="{escape(_with_lang("/investment-plans", lang))}">{escape(_t("brand", lang))}</a>
+    <div class="nav">
+      <div class="lang">{_lang_switcher()}</div>
+      <a class="btn alt" href="{escape(_with_lang("/investment-plans/new", lang))}">{escape(_t("create_plan", lang))}</a>
+    </div>
   </div>
-  {body}
+  <div class="page-grid">
+    <main>{body}</main>
+    {_tutorial_sidebar(lang)}
+  </div>
 </div></body></html>"""
 
 
 @app.route("/investment-plans")
 def investment_plan_home():
+    lang = _current_lang()
     user_id = request.args.get("user_id")
     plans = PLAN_STORE.list_for_user(user_id)
     cards = "".join(
@@ -346,39 +634,94 @@ def investment_plan_home():
         f"<div class='eyebrow'>{escape(plan.request.plan_type)}</div>"
         f"<h3>{escape(plan.title)}</h3>"
         f"<p>{escape(plan.summary)}</p>"
-        f"<div class='actions'><a class='btn' href='/investment-plans/{plan.id}'>查看計畫</a></div>"
+        f"<div class='actions'><a class='btn' href='{escape(_with_lang(f'/investment-plans/{plan.id}', lang))}'>{escape(_t('view_plan', lang))}</a></div>"
         "</article>"
         for plan in plans[:12]
-    ) or "<p>目前還沒有投資計畫。</p>"
+    ) or f"<p>{escape(_t('no_plans', lang))}</p>"
     body = f"""
     <section class="hero">
       <div class="eyebrow">Single Stock Planning</div>
-      <h1>完整分析 + 每月零存整付</h1>
-      <p>會員可以針對單一股票建立完整分析計畫，也可以輸入每月 3,000 元、5,000 元或自訂金額，取得可追蹤的投入規則。</p>
+      <h1>{escape(_t("home_title", lang))}</h1>
+      <p>{escape(_t("home_intro", lang))}</p>
       <div class="actions">
-        <a class="btn" href="/investment-plans/new?plan_type=recurring_investment">零存整付</a>
-        <a class="btn alt" href="/investment-plans/new?plan_type=full_analysis">完整分析</a>
-        <a class="btn" href="/investment-plans/line-subscribe">LINE 每日推播</a>
+        <a class="btn" href="{escape(_with_lang('/investment-plans/new?plan_type=recurring_investment', lang))}">{escape(_t("recurring", lang))}</a>
+        <a class="btn alt" href="{escape(_with_lang('/investment-plans/new?plan_type=full_analysis', lang))}">{escape(_t("full_analysis", lang))}</a>
+        <a class="btn" href="{escape(_with_lang('/investment-plans/line-subscribe', lang))}">{escape(_t("line_push", lang))}</a>
       </div>
     </section>
-    <section class="section"><h2>已建立計畫</h2><div class="grid">{cards}</div></section>
+    <section class="section"><h2>{escape(_t("plans_created", lang))}</h2><div class="grid">{cards}</div></section>
     """
-    return _plan_shell("AI 單股投資計畫", body)
+    return _plan_shell(_t("brand", lang), body)
+
+
+@app.route("/investment-plans/tutorials")
+def investment_tutorials_index():
+    lang = _current_lang()
+    cards = "".join(
+        f"""
+        <article class="card">
+          <div class="eyebrow">{escape(item["minutes"])}</div>
+          <h3>{escape(_localized(item["title"], lang))}</h3>
+          <p>{escape(_localized(item["summary"], lang))}</p>
+          <div class="actions"><a class="btn" href="{escape(_with_lang(f'/investment-plans/tutorials/{item["id"]}', lang))}">{escape(_t("watch_script", lang))}</a></div>
+        </article>
+        """
+        for item in TUTORIAL_VIDEOS
+    )
+    body = f"""
+    <section class="hero">
+      <div class="eyebrow">Tutorial Library</div>
+      <h1>{escape(_t("tutorials", lang))}</h1>
+      <p>{escape(_t("tutorial_intro", lang))}</p>
+    </section>
+    <section class="section"><div class="grid">{cards}</div></section>
+    """
+    return _plan_shell(_t("tutorials", lang), body)
+
+
+@app.route("/investment-plans/tutorials/<video_id>")
+def investment_tutorial_detail(video_id):
+    lang = _current_lang()
+    item = next((video for video in TUTORIAL_VIDEOS if video["id"] == video_id), None)
+    if not item:
+        return jsonify({"error": "Tutorial not found"}), 404
+    steps = "".join(f"<li>{escape(step)}</li>" for step in _localized(item["steps"], lang))
+    body = f"""
+    <section class="hero">
+      <div class="eyebrow">Tutorial / {escape(item["minutes"])}</div>
+      <h1>{escape(_localized(item["title"], lang))}</h1>
+      <p>{escape(_localized(item["summary"], lang))}</p>
+      <div class="actions">
+        <a class="btn" href="{escape(_with_lang('/investment-plans', lang))}">{escape(_t("brand", lang))}</a>
+        <a class="btn alt" href="{escape(_with_lang('/investment-plans/tutorials', lang))}">{escape(_t("tutorials", lang))}</a>
+      </div>
+    </section>
+    <section class="section">
+      <h2>Storyboard</h2>
+      <ol>{steps}</ol>
+    </section>
+    <section class="section">
+      <h2>Voice-over</h2>
+      <p>{escape(" / ".join(_localized(item["steps"], lang)))}</p>
+    </section>
+    """
+    return _plan_shell(_localized(item["title"], lang), body)
 
 
 @app.route("/investment-plans/new")
 def investment_plan_new():
+    lang = _current_lang()
     plan_type = request.args.get("plan_type", "recurring_investment")
     recurring_selected = "selected" if plan_type == "recurring_investment" else ""
     full_selected = "selected" if plan_type == "full_analysis" else ""
     body = f"""
     <section class="hero">
       <div class="eyebrow">Create Plan</div>
-      <h1>建立會員單股投資計畫</h1>
-      <p>輸入股票、月存金額、風險偏好、原料與公開事件追蹤關鍵字，產生可每月更新的投資紀律。</p>
+      <h1>{escape(_t("create_title", lang))}</h1>
+      <p>{escape(_t("create_intro", lang))}</p>
     </section>
     <section class="section">
-      <form class="stack" method="post" action="/investment-plans/create">
+      <form class="stack" method="post" action="{escape(_with_lang('/investment-plans/create', lang))}">
         <div class="grid">
           <label>會員 ID<input name="user_id" value="guest" required /></label>
           <label>計畫類型<select name="plan_type"><option value="recurring_investment" {recurring_selected}>零存整付投資計畫</option><option value="full_analysis" {full_selected}>完整股票分析計畫</option></select></label>
@@ -402,11 +745,12 @@ def investment_plan_new():
       </form>
     </section>
     """
-    return _plan_shell("建立投資計畫", body)
+    return _plan_shell(_t("create_title", lang), body)
 
 
 @app.route("/investment-plans/create", methods=["POST"])
 def investment_plan_create():
+    lang = _current_lang()
     try:
         monthly_amount = request.form.get("monthly_amount")
         average_cost = request.form.get("average_cost")
@@ -431,19 +775,20 @@ def investment_plan_create():
         ))
     except Exception as exc:
         return jsonify({"error": str(exc)}), 422
-    return ("", 303, {"Location": f"/investment-plans/{plan.id}"})
+    return ("", 303, {"Location": _with_lang(f"/investment-plans/{plan.id}", lang)})
 
 
 @app.route("/investment-plans/line-subscribe")
 def investment_line_subscribe():
+    lang = _current_lang()
     line_url = os.environ.get("LINE_OFFICIAL_ACCOUNT_URL", "")
     webhook_url = os.environ.get("LINE_WEBHOOK_URL", "https://stock-bot-backend-kcbc.onrender.com/investment-plans/line-webhook")
     action = f"<a class='btn' href='{escape(line_url)}'>加入 LINE 每日推播</a>" if line_url else "<p>尚未設定 LINE_OFFICIAL_ACCOUNT_URL。設定後，這裡會顯示一鍵加入 LINE 官方帳號的連結。</p>"
     body = f"""
     <section class="hero">
       <div class="eyebrow">LINE Subscribe</div>
-      <h1>每天用 LINE 收 2408 投資更新</h1>
-      <p>會員點擊加入官方帳號後，只要在 LINE 對話輸入「綁定 會員ID」，系統會自動完成 LINE userId 綁定。</p>
+      <h1>{escape(_t("line_title", lang))}</h1>
+      <p>{escape(_t("line_intro", lang))}</p>
       <div class="actions">{action}</div>
     </section>
     <section class="section">
@@ -457,7 +802,7 @@ def investment_line_subscribe():
     </section>
     <section class="section">
       <h2>手動建立推播訂閱</h2>
-      <form class="stack" method="post" action="/investment-plans/line-subscribe">
+      <form class="stack" method="post" action="{escape(_with_lang('/investment-plans/line-subscribe', lang))}">
         <div class="grid">
           <label>會員 ID<input name="user_id" value="guest" required /></label>
           <label>計畫 ID<input name="plan_id" placeholder="可留空，或填入投資計畫 ID" /></label>
@@ -477,11 +822,12 @@ def investment_line_subscribe():
       </ul>
     </section>
     """
-    return _plan_shell("LINE 每日推播訂閱", body)
+    return _plan_shell(_t("line_title", lang), body)
 
 
 @app.route("/investment-plans/line-subscribe", methods=["POST"])
 def investment_line_subscribe_create():
+    lang = _current_lang()
     try:
         PLAN_STORE.create_line_subscription(LineSubscriptionRequest(
             user_id=request.form["user_id"],
@@ -492,7 +838,7 @@ def investment_line_subscribe_create():
         ))
     except Exception as exc:
         return jsonify({"error": str(exc)}), 422
-    return ("", 303, {"Location": f"/investment-plans/line-subscribe?user_id={escape(request.form['user_id'])}"})
+    return ("", 303, {"Location": _with_lang(f"/investment-plans/line-subscribe?user_id={escape(request.form['user_id'])}", lang)})
 
 
 @app.route("/investment-plans/line-webhook", methods=["GET"])
