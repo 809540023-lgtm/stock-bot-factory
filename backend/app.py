@@ -373,16 +373,40 @@ TEXT = {
         "en": "Tutorial videos",
     },
     "tutorial_intro": {
-        "zh-TW": "先放可上線的影片腳本與操作分鏡；之後可替換成正式錄製的 mp4。",
-        "zh-CN": "先放可上线的视频脚本与操作分镜；之后可替换成正式录制的 mp4。",
-        "ja": "まず公開可能な台本と操作シーンを置き、後で正式な mp4 に差し替えます。",
-        "en": "This area contains publish-ready scripts and storyboards now; later it can be replaced with recorded MP4 videos.",
+        "zh-TW": "可直接播放的互動教學影片，會逐段顯示操作畫面、旁白與進度。",
+        "zh-CN": "可直接播放的互动教学视频，会逐段显示操作画面、旁白与进度。",
+        "ja": "その場で再生できる操作チュートリアルです。画面、ナレーション、進行状況を順番に表示します。",
+        "en": "Playable interactive tutorials that step through screens, voice-over text, and progress.",
     },
     "watch_script": {
-        "zh-TW": "看腳本",
-        "zh-CN": "看脚本",
-        "ja": "台本を見る",
-        "en": "View script",
+        "zh-TW": "播放",
+        "zh-CN": "播放",
+        "ja": "再生",
+        "en": "Play",
+    },
+    "play": {
+        "zh-TW": "播放",
+        "zh-CN": "播放",
+        "ja": "再生",
+        "en": "Play",
+    },
+    "pause": {
+        "zh-TW": "暫停",
+        "zh-CN": "暂停",
+        "ja": "一時停止",
+        "en": "Pause",
+    },
+    "restart": {
+        "zh-TW": "重播",
+        "zh-CN": "重播",
+        "ja": "最初から",
+        "en": "Restart",
+    },
+    "interactive_video": {
+        "zh-TW": "互動教學影片",
+        "zh-CN": "互动教学视频",
+        "ja": "インタラクティブ動画",
+        "en": "Interactive video",
     },
     "create_title": {
         "zh-TW": "建立會員單股投資計畫",
@@ -525,6 +549,11 @@ def _localized(value, lang=None):
     return value.get(lang) or value.get("zh-TW") or ""
 
 
+def _json_attr(value):
+    import json
+    return escape(json.dumps(value, ensure_ascii=False), quote=True)
+
+
 def _lang_switcher():
     current = _current_lang()
     links = []
@@ -543,7 +572,7 @@ def _tutorial_sidebar(lang=None):
           <div class="video-thumb"><span>{escape(item["minutes"])}</span></div>
           <h3>{escape(_localized(item["title"], lang))}</h3>
           <p>{escape(_localized(item["summary"], lang))}</p>
-          <a class="text-link" href="{escape(_with_lang(f'/investment-plans/tutorials/{item["id"]}', lang))}">{escape(_t("watch_script", lang))}</a>
+          <a class="text-link" href="{escape(_with_lang(f'/investment-plans/tutorials/{item["id"]}', lang))}">▶ {escape(_t("watch_script", lang))}</a>
         </article>
         """
         for item in TUTORIAL_VIDEOS
@@ -586,6 +615,17 @@ def _plan_shell(title, body):
     .tutorial-rail {{ position:sticky; top:18px; display:grid; gap:12px; }}
     .rail-head,.video-card {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }}
     .video-thumb {{ aspect-ratio:16/9; border-radius:8px; background:linear-gradient(135deg,#1f5c51,#9b4f2f); display:flex; align-items:flex-end; justify-content:flex-end; padding:10px; color:#fff; font-weight:800; margin-bottom:12px; }}
+    .tutorial-player {{ border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#101815; color:#fff; }}
+    .player-screen {{ min-height:320px; display:grid; align-content:center; gap:18px; padding:28px; background:linear-gradient(135deg,#10201b,#25665b 58%,#9b4f2f); }}
+    .screen-kicker {{ color:#d9f1e7; font-size:13px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }}
+    .screen-title {{ color:#fff; margin:0; font-size:32px; line-height:1.15; }}
+    .screen-text {{ color:#eef8f3; font-size:18px; margin:0; }}
+    .progress-track {{ height:8px; background:#26342f; }}
+    .progress-bar {{ height:100%; width:0%; background:#4dd19b; transition:width .25s ease; }}
+    .player-controls {{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; padding:14px; background:#17201b; }}
+    .player-controls .buttons {{ display:flex; gap:8px; flex-wrap:wrap; }}
+    .player-controls button {{ background:#fff; color:#17201b; padding:9px 12px; }}
+    .step-count {{ color:#cfe4d9; font-weight:800; }}
     .text-link {{ color:var(--accent); font-weight:800; text-decoration:none; }}
     .eyebrow {{ color:var(--accent2); font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }}
     h1 {{ margin:8px 0 10px; font-size:36px; line-height:1.12; }}
@@ -685,15 +725,42 @@ def investment_tutorial_detail(video_id):
     item = next((video for video in TUTORIAL_VIDEOS if video["id"] == video_id), None)
     if not item:
         return jsonify({"error": "Tutorial not found"}), 404
-    steps = "".join(f"<li>{escape(step)}</li>" for step in _localized(item["steps"], lang))
+    localized_steps = _localized(item["steps"], lang)
+    steps = "".join(f"<li>{escape(step)}</li>" for step in localized_steps)
+    player_steps = [
+        {
+            "kicker": f"{index + 1} / {len(localized_steps)}",
+            "title": _localized(item["title"], lang),
+            "text": step,
+        }
+        for index, step in enumerate(localized_steps)
+    ]
     body = f"""
     <section class="hero">
-      <div class="eyebrow">Tutorial / {escape(item["minutes"])}</div>
+      <div class="eyebrow">{escape(_t("interactive_video", lang))} / {escape(item["minutes"])}</div>
       <h1>{escape(_localized(item["title"], lang))}</h1>
       <p>{escape(_localized(item["summary"], lang))}</p>
       <div class="actions">
         <a class="btn" href="{escape(_with_lang('/investment-plans', lang))}">{escape(_t("brand", lang))}</a>
         <a class="btn alt" href="{escape(_with_lang('/investment-plans/tutorials', lang))}">{escape(_t("tutorials", lang))}</a>
+      </div>
+    </section>
+    <section class="section">
+      <div class="tutorial-player" data-steps="{_json_attr(player_steps)}">
+        <div class="player-screen">
+          <div class="screen-kicker" data-role="kicker">1 / {len(localized_steps)}</div>
+          <h2 class="screen-title" data-role="title">{escape(_localized(item["title"], lang))}</h2>
+          <p class="screen-text" data-role="text">{escape(localized_steps[0])}</p>
+        </div>
+        <div class="progress-track"><div class="progress-bar" data-role="progress"></div></div>
+        <div class="player-controls">
+          <div class="buttons">
+            <button type="button" data-action="play">▶ {escape(_t("play", lang))}</button>
+            <button type="button" data-action="pause">{escape(_t("pause", lang))}</button>
+            <button type="button" data-action="restart">{escape(_t("restart", lang))}</button>
+          </div>
+          <div class="step-count" data-role="count">1 / {len(localized_steps)}</div>
+        </div>
       </div>
     </section>
     <section class="section">
@@ -704,6 +771,53 @@ def investment_tutorial_detail(video_id):
       <h2>Voice-over</h2>
       <p>{escape(" / ".join(_localized(item["steps"], lang)))}</p>
     </section>
+    <script>
+    (() => {{
+      const player = document.querySelector('.tutorial-player');
+      if (!player) return;
+      const steps = JSON.parse(player.dataset.steps || '[]');
+      const kicker = player.querySelector('[data-role="kicker"]');
+      const title = player.querySelector('[data-role="title"]');
+      const text = player.querySelector('[data-role="text"]');
+      const progress = player.querySelector('[data-role="progress"]');
+      const count = player.querySelector('[data-role="count"]');
+      let index = 0;
+      let timer = null;
+      const render = () => {{
+        const step = steps[index] || steps[0];
+        if (!step) return;
+        kicker.textContent = step.kicker;
+        title.textContent = step.title;
+        text.textContent = step.text;
+        count.textContent = `${{index + 1}} / ${{steps.length}}`;
+        progress.style.width = `${{((index + 1) / steps.length) * 100}}%`;
+      }};
+      const pause = () => {{
+        if (timer) window.clearInterval(timer);
+        timer = null;
+      }};
+      const play = () => {{
+        pause();
+        timer = window.setInterval(() => {{
+          if (index >= steps.length - 1) {{
+            pause();
+            return;
+          }}
+          index += 1;
+          render();
+        }}, 2200);
+      }};
+      player.querySelector('[data-action="play"]').addEventListener('click', play);
+      player.querySelector('[data-action="pause"]').addEventListener('click', pause);
+      player.querySelector('[data-action="restart"]').addEventListener('click', () => {{
+        pause();
+        index = 0;
+        render();
+        play();
+      }});
+      render();
+    }})();
+    </script>
     """
     return _plan_shell(_localized(item["title"], lang), body)
 
