@@ -90,6 +90,15 @@
   .feeditem .when{color:var(--muted);font-size:11px;float:right}
   .note{font-size:12px;color:var(--muted);background:var(--surface2);border-left:3px solid var(--accent2);padding:10px 13px;border-radius:0 8px 8px 0;margin-top:18px}
   .disc{font-size:12px;color:var(--muted);text-align:center;margin-top:30px;line-height:1.7}
+  /* 排行榜 */
+  .lb-bh{font-size:13px;color:var(--muted);margin-bottom:10px}
+  .lb-wrap{overflow-x:auto;border-radius:9px;border:1px solid var(--line)}
+  table.lb{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+  table.lb th{background:var(--surface2);color:var(--muted);font-weight:600;font-size:12px;padding:9px 11px;text-align:left;white-space:nowrap}
+  table.lb td{padding:9px 11px;border-top:1px solid var(--line);white-space:nowrap}
+  table.lb tbody tr:hover{background:var(--surface2)}
+  .lb-cat{font-size:11px;color:var(--muted);margin-top:1px}
+  .lb-note{font-size:11px;color:var(--muted);margin-top:8px}
 </style>
 </head>
 <body>
@@ -175,6 +184,28 @@
       <h2><span>📁</span> 我的機器人</h2>
       <p class="sub">你儲存的機器人（存在這台裝置的瀏覽器裡）。</p>
       <div id="mybots"></div>
+    </div>
+
+    <!-- 機器人排行榜 -->
+    <div class="card" style="grid-column:1/-1">
+      <h2><span>🏆</span> 機器人排行榜 <span class="pill">即時掃描</span></h2>
+      <p class="sub">輸入一檔股票，一鍵把全部 12 隻機器人都跑一遍，看誰最強、現在各自的訊號是什麼。</p>
+      <div class="row">
+        <div class="fld">
+          <label>股票代號</label>
+          <input class="inp stock" id="lbStock" value="2330" maxlength="6" />
+        </div>
+        <div class="fld">
+          <label>回測期間</label>
+          <select class="inp" id="lbMonths">
+            <option value="6">近 6 個月</option>
+            <option value="12" selected>近 12 個月</option>
+            <option value="24">近 24 個月</option>
+          </select>
+        </div>
+        <button class="runbtn" id="lbBtn" style="flex:0 0 auto;width:auto;padding:13px 22px" onclick="runLeaderboard()">🏁 比較全部機器人</button>
+      </div>
+      <div id="leaderboard"></div>
     </div>
 
     <!-- 社群參數池 -->
@@ -448,6 +479,54 @@ function drawChart(prices, markers){
       <span>最低 ${fmt(Math.min(...prices))}</span>
       <span>最新 ${fmt(prices[n-1])}</span>
     </div>`;
+}
+
+// ── 機器人排行榜（一鍵跑全部 bot）──
+async function runLeaderboard(){
+  const code=lbStock.value.trim(), months=parseInt(lbMonths.value);
+  const box=document.getElementById("leaderboard");
+  lbBtn.disabled=true; lbBtn.textContent="⏳ 跑全部機器人中…（首次約 20 秒）";
+  box.innerHTML='<div class="empty">計算中…</div>';
+  try{
+    const r=await fetch(`${API_BASE}/api/leaderboard?stock=${encodeURIComponent(code)}&months=${months}`);
+    const d=await r.json();
+    if(!r.ok||d.error){ throw new Error(d.error||("HTTP "+r.status)); }
+    renderLeaderboard(d);
+  }catch(e){
+    box.innerHTML=`<div class="err">⚠ 無法比較（${e.message}）。請確認後端已啟動或代號正確。</div>`;
+  }finally{
+    lbBtn.disabled=false; lbBtn.textContent="🏁 比較全部機器人";
+  }
+}
+function sigChip(s){
+  const m={"買進":["🟢","var(--buy)"],"賣出":["🔴","var(--sell)"],"續抱":["🟡","var(--accent2)"],"觀望":["⚪","var(--muted)"]}[s]||["",""];
+  return `<span style="color:${m[1]}">${m[0]} ${s}</span>`;
+}
+function renderLeaderboard(d){
+  const box=document.getElementById("leaderboard");
+  const bh=d.buy_hold_return_pct;
+  let rows=d.ranking.map((b,i)=>{
+    const medal=i===0?"🏆":i===1?"🥈":i===2?"🥉":(i+1);
+    const ret=(b.compound_return_pct>=0?"+":"")+b.compound_return_pct+"%";
+    const retColor=b.compound_return_pct>=0?"var(--buy)":"var(--sell)";
+    const win=b.beats_buy_hold?'<span style="color:var(--buy)">✅ 贏</span>':'<span style="color:var(--muted)">✗</span>';
+    const hl=b.beats_buy_hold?'style="border-left:3px solid var(--buy)"':'style="border-left:3px solid transparent"';
+    return `<tr ${hl}>
+      <td style="text-align:center">${medal}</td>
+      <td>${b.name}<div class="lb-cat">${b.category||""} · 風險${b.risk||""}</div></td>
+      <td style="text-align:right;color:${retColor};font-weight:700">${ret}</td>
+      <td style="text-align:right">${b.win_rate}%</td>
+      <td style="text-align:right;color:var(--sell)">-${b.max_drawdown_pct}%</td>
+      <td style="text-align:center">${sigChip(b.final_signal)}</td>
+      <td style="text-align:center">${win}</td></tr>`;
+  }).join("");
+  box.innerHTML=`
+    <div class="lb-bh">${d.stock}　同期買進持有基準：<b style="color:${bh>=0?'var(--buy)':'var(--sell)'}">${bh>=0?"+":""}${bh}%</b>　（共 ${d.days} 個交易日，已扣成本）</div>
+    <div class="lb-wrap"><table class="lb">
+      <thead><tr><th>排名</th><th>機器人</th><th style="text-align:right">複利報酬</th><th style="text-align:right">勝率</th><th style="text-align:right">最大回撤</th><th style="text-align:center">目前訊號</th><th style="text-align:center">贏大盤</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div class="lb-note">綠色左邊條＝贏過「買進持有」的機器人。訊號為截至最新交易日的參考訊號，非投資建議。</div>`;
 }
 
 // ── 啟動 ──

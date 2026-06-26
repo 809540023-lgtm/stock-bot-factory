@@ -272,6 +272,62 @@ def api_backtest():
     })
 
 
+@app.route("/api/leaderboard")
+def api_leaderboard():
+    """
+    一鍵把資料庫全部機器人跑在同一檔股票上，依複利報酬排名。
+    重點：股價只抓一次（全部 bot 共用快取），所以比逐一回測快很多。
+    另回傳每隻機器人「目前訊號」與標的的超買/超賣指標，供即時掃描用。
+    """
+    stock = request.args.get("stock", "2330").strip()
+    if not _valid_stock(stock):
+        return jsonify({"error": "股票代號格式不正確（請輸入 4 碼代號，如 2330）"}), 400
+    months = request.args.get("months", 12)
+
+    fee_pct = request.args.get("fee_pct", DEFAULT_FEE_PCT)
+    try:
+        fee_pct = max(0.0, float(fee_pct))
+    except (ValueError, TypeError):
+        fee_pct = DEFAULT_FEE_PCT
+
+    closes = fetch_prices(stock, months)
+    if len(closes) < 30:
+        return jsonify({
+            "error": f"資料不足（只抓到 {len(closes)} 天），無法比較。"
+                     f"可能是代號錯誤、停牌或新上市。"
+        }), 400
+
+    ranking = []
+    buy_hold = 0.0
+    for bot in public_library():
+        r = run_bot(bot, closes, fee_pct=fee_pct)
+        buy_hold = r.buy_hold_return_pct
+        ranking.append({
+            "id": bot.get("id"),
+            "name": bot.get("name"),
+            "category": bot.get("category"),
+            "risk": bot.get("risk"),
+            "trades": r.trades,
+            "win_rate": r.win_rate,
+            "compound_return_pct": r.compound_return_pct,
+            "max_drawdown_pct": r.max_drawdown_pct,
+            "beats_buy_hold": r.beats_buy_hold,
+            "final_signal": r.final_signal,
+        })
+    ranking.sort(key=lambda x: x["compound_return_pct"], reverse=True)
+
+    return jsonify({
+        "stock": stock,
+        "days": len(closes),
+        "last_close": closes[-1],
+        "fee_pct": round(fee_pct, 3),
+        "buy_hold_return_pct": buy_hold,
+        "ranking": ranking,
+        "disclaimer": "本結果為歷史回測，已扣交易成本，仍非投資建議，"
+                      "不代表未來，投資有風險。",
+    })
+
+
 # ── 投資計畫與 LINE 訂閱 MVP ────────────────────────────────
 def _money(value):
     if value is None:
