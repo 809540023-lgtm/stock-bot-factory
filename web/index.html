@@ -99,6 +99,30 @@
   table.lb tbody tr:hover{background:var(--surface2)}
   .lb-cat{font-size:11px;color:var(--muted);margin-top:1px}
   .lb-note{font-size:11px;color:var(--muted);margin-top:8px}
+  /* 會員登入 */
+  .authbar{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .authbtn{background:var(--accent);color:#06231a;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer}
+  .authbtn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:600}
+  .authbtn.ghost:hover{border-color:var(--accent);color:var(--text)}
+  .useremail{font-size:12px;color:var(--accent)}
+  .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center;padding:20px}
+  .overlay.show{display:flex;animation:pop .2s}
+  .modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;width:100%;max-width:380px}
+  .modal h3{font-size:18px;margin-bottom:4px}
+  .modal .msub{font-size:13px;color:var(--muted);margin-bottom:16px}
+  .tabs{display:flex;gap:8px;margin-bottom:16px}
+  .tab{flex:1;text-align:center;padding:9px;border-radius:8px;background:var(--surface2);border:1px solid var(--line);cursor:pointer;font-size:14px;color:var(--muted)}
+  .tab.on{border-color:var(--accent);color:var(--text);font-weight:700}
+  .modal label{display:block;font-size:12px;color:var(--muted);margin:10px 0 5px}
+  .modal input{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:11px 12px;color:var(--text);font-size:14px}
+  .modal .submit{width:100%;background:var(--accent);color:#06231a;border:none;border-radius:9px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;margin-top:18px}
+  .modal .submit:disabled{opacity:.6;cursor:wait}
+  .modal .close{float:right;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;margin-top:-4px}
+  .authmsg{font-size:13px;margin-top:12px;padding:9px 11px;border-radius:8px;display:none}
+  .authmsg.show{display:block}
+  .authmsg.err{background:rgba(255,107,107,.12);color:var(--sell);border:1px solid rgba(255,107,107,.3)}
+  .authmsg.ok{background:rgba(61,220,151,.12);color:var(--buy);border:1px solid rgba(61,220,151,.3)}
+  .lockhint{font-size:12px;color:var(--accent2);margin-top:8px}
 </style>
 </head>
 <body>
@@ -106,6 +130,30 @@
   <div class="logo">林博<b>股票機器人工廠</b></div>
   <span class="tag" id="modeTag">連線中…</span>
   <span class="tag">真實證交所資料</span>
+  <div class="authbar" id="authbar" style="display:none">
+    <span class="useremail" id="userEmail"></span>
+    <button class="authbtn" id="loginBtn" onclick="openAuth('login')">登入 / 註冊</button>
+    <button class="authbtn ghost" id="logoutBtn" style="display:none" onclick="doLogout()">登出</button>
+  </div>
+</div>
+
+<!-- 會員登入 / 註冊 -->
+<div class="overlay" id="authOverlay">
+  <div class="modal">
+    <span class="close" onclick="closeAuth()">✕</span>
+    <h3>會員登入</h3>
+    <p class="msub" id="authSub">登入後即可儲存機器人、使用排行榜等進階功能。</p>
+    <div class="tabs">
+      <div class="tab on" id="tabLogin" onclick="switchTab('login')">登入</div>
+      <div class="tab" id="tabSignup" onclick="switchTab('signup')">註冊</div>
+    </div>
+    <label>Email</label>
+    <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" />
+    <label>密碼</label>
+    <input id="authPass" type="password" placeholder="至少 6 碼" autocomplete="current-password" />
+    <button class="submit" id="authSubmit" onclick="doAuth()">登入</button>
+    <div class="authmsg" id="authMsg"></div>
+  </div>
 </div>
 
 <div class="wrap">
@@ -222,6 +270,8 @@
 </div>
 
 <script src="config.js"></script>
+<script src="supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="engine.js"></script>
 <script>
 // ── 積木定義（前端可組的條件）──
@@ -335,6 +385,7 @@ function renderFeed(){
 function getMyBots(){ try{return JSON.parse(localStorage.getItem(MYBOTS_KEY)||"[]")}catch(e){return []} }
 function setMyBots(a){ localStorage.setItem(MYBOTS_KEY, JSON.stringify(a)); }
 function saveBot(){
+  if(requireLogin("儲存機器人")) return;
   if(!buyConds.length||!sellConds.length){alert("先組好買進與賣出條件再儲存");return}
   const bots=getMyBots();
   bots.unshift({
@@ -483,6 +534,7 @@ function drawChart(prices, markers){
 
 // ── 機器人排行榜（一鍵跑全部 bot）──
 async function runLeaderboard(){
+  if(requireLogin("使用排行榜")) return;
   const code=lbStock.value.trim(), months=parseInt(lbMonths.value);
   const box=document.getElementById("leaderboard");
   lbBtn.disabled=true; lbBtn.textContent="⏳ 跑全部機器人中…（首次約 20 秒）";
@@ -529,10 +581,84 @@ function renderLeaderboard(d){
     <div class="lb-note">綠色左邊條＝贏過「買進持有」的機器人。訊號為截至最新交易日的參考訊號，非投資建議。</div>`;
 }
 
+// ── 會員登入（Supabase Auth）──
+let sb=null, currentUser=null, authMode="login";
+function initAuth(){
+  if(!window.AUTH_ENABLED){  // 尚未設定 Supabase 金鑰 → 維持免登入、全功能開放
+    document.getElementById("authbar").style.display="none";
+    return;
+  }
+  document.getElementById("authbar").style.display="flex";
+  sb=window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  sb.auth.getSession().then(({data})=>updateAuthUI(data.session&&data.session.user));
+  sb.auth.onAuthStateChange((_e,session)=>updateAuthUI(session&&session.user));
+}
+function updateAuthUI(user){
+  currentUser=user||null;
+  const inn=!!user;
+  document.getElementById("loginBtn").style.display=inn?"none":"inline-block";
+  document.getElementById("logoutBtn").style.display=inn?"inline-block":"none";
+  document.getElementById("userEmail").textContent=inn?("👤 "+user.email):"";
+}
+function requireLogin(action){
+  // 回傳 true = 擋下（未登入且系統已啟用）；false = 放行
+  if(!window.AUTH_ENABLED) return false;      // 未設定金鑰 → 一律放行（試用）
+  if(currentUser) return false;               // 已登入 → 放行
+  openAuth("login", `「${action}」是會員功能，登入或註冊後即可使用。`);
+  return true;
+}
+function openAuth(mode, hint){
+  switchTab(mode||"login");
+  document.getElementById("authSub").textContent = hint || "登入後即可儲存機器人、使用排行榜等進階功能。";
+  showAuthMsg("");
+  document.getElementById("authOverlay").classList.add("show");
+}
+function closeAuth(){ document.getElementById("authOverlay").classList.remove("show"); }
+function switchTab(mode){
+  authMode=mode;
+  document.getElementById("tabLogin").classList.toggle("on",mode==="login");
+  document.getElementById("tabSignup").classList.toggle("on",mode==="signup");
+  document.getElementById("authSubmit").textContent = mode==="login"?"登入":"註冊";
+  document.getElementById("authPass").setAttribute("autocomplete", mode==="login"?"current-password":"new-password");
+}
+function showAuthMsg(text, kind){
+  const m=document.getElementById("authMsg");
+  m.className="authmsg"+(text?(" show "+(kind||"err")):"");
+  m.textContent=text||"";
+}
+async function doAuth(){
+  if(!sb) return;
+  const email=document.getElementById("authEmail").value.trim();
+  const pass=document.getElementById("authPass").value;
+  if(!email||!pass){ showAuthMsg("請輸入 Email 與密碼"); return; }
+  if(authMode==="signup"&&pass.length<6){ showAuthMsg("密碼至少 6 碼"); return; }
+  const btn=document.getElementById("authSubmit"); btn.disabled=true; btn.textContent="處理中…";
+  try{
+    if(authMode==="login"){
+      const {error}=await sb.auth.signInWithPassword({email,password:pass});
+      if(error) throw error;
+      showAuthMsg("登入成功！","ok"); setTimeout(closeAuth,600);
+    }else{
+      const {data,error}=await sb.auth.signUp({email,password:pass});
+      if(error) throw error;
+      if(data.session){ showAuthMsg("註冊成功、已登入！","ok"); setTimeout(closeAuth,700); }
+      else{ showAuthMsg("註冊成功！請到信箱收確認信，完成後即可登入。","ok"); }
+    }
+  }catch(e){
+    const msg=(e&&e.message)||"發生錯誤";
+    showAuthMsg(/invalid login/i.test(msg)?"帳號或密碼錯誤":
+               /already registered/i.test(msg)?"這個 Email 已註冊，請直接登入":msg);
+  }finally{
+    btn.disabled=false; btn.textContent=authMode==="login"?"登入":"註冊";
+  }
+}
+async function doLogout(){ if(sb){ await sb.auth.signOut(); } }
+
 // ── 啟動 ──
 renderPalette(); renderZones(); renderFeed(); renderMyBots();
 detectBackend();
 loadSamples();
+initAuth();
 </script>
 </body>
 </html>
