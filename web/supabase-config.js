@@ -1,13 +1,9 @@
 // ── Supabase 會員系統設定 ───────────────────────────────────
-// 把下面兩個值換成你 Supabase 專案的（後台 Settings → API）：
-//   SUPABASE_URL       = Project URL，例如 https://abcdefgh.supabase.co
-//   SUPABASE_ANON_KEY  = anon / public key（eyJ... 開頭那串，公開設計、由 RLS 保護）
-// ⚠ 不要放 service_role key（那把是機密）。
-//
-// 兩個值都填好後，會員登入/註冊會自動啟用，並鎖住「儲存機器人」「排行榜」等進階功能。
-// 只要還是下面的佔位字串，網站會維持「免登入、全功能開放」的狀態，不會壞。
-window.SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
-window.SUPABASE_ANON_KEY = "YOUR-ANON-KEY";
+// 專案：linbo-stock-bot（jbg 免費組織 · 東京區）
+// URL / anon key 皆為公開設計（會出現在網頁原始碼、由 RLS 保護），非機密。
+// ⚠ 切勿放 service_role key（那把才是機密）。
+window.SUPABASE_URL = "https://fpyfgpuzchchzznlpovf.supabase.co";
+window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZweWZncHV6Y2hjaHp6bmxwb3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzODc1NzksImV4cCI6MjA5OTk2MzU3OX0.WFMnhxHVAl2qC6z4FVgRLE2wOAvdkWrHUmi8joswedY";
 
 // 是否已正確設定（兩者皆非佔位符才算啟用）
 window.AUTH_ENABLED = !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY
